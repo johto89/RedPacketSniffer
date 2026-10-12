@@ -1,0 +1,2559 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Red Packet Sniffer - CMC Red Team</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #1a1a2e;
+            --bg-secondary: #16213e;
+            --bg-tertiary: #0f3460;
+            --bg-row-hover: #1a3a5c;
+            --text-primary: #e0e0e0;
+            --text-secondary: #a0a0b0;
+            --text-accent: #00d4ff;
+            --border: #2a2a4a;
+            --red: #ff4444;
+            --green: #44ff44;
+            --yellow: #ffbb33;
+            --orange: #ff8800;
+            --blue: #4488ff;
+            --purple: #bb44ff;
+            --in-color: #4caf50;
+            --out-color: #ff9800;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-size: 13px;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* === HEADER === */
+        .header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            padding: 8px 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-shrink: 0;
+        }
+        .header .logo { color: var(--red); font-weight: bold; font-size: 15px; white-space: nowrap; }
+        .header .logo span { color: var(--text-accent); }
+
+        /* === TOOLBAR === */
+        .toolbar {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            padding: 6px 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            flex-shrink: 0;
+        }
+        select, input[type="text"], input[type="number"] {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-family: inherit;
+            font-size: 12px;
+        }
+        select { min-width: 200px; }
+        input[type="text"] { min-width: 100px; }
+        label { font-size: 11px; color: var(--text-secondary); margin-right: 2px; }
+        .checkbox-wrap { display: flex; align-items: center; gap: 4px; }
+        .checkbox-wrap input { accent-color: var(--text-accent); }
+
+        button {
+            padding: 5px 14px;
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            font-family: inherit;
+            font-size: 12px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .btn-start { background: #1b5e20; color: var(--green); border-color: #2e7d32; }
+        .btn-start:hover { background: #2e7d32; }
+        .btn-stop { background: #b71c1c; color: #ffcdd2; border-color: #c62828; }
+        .btn-stop:hover { background: #c62828; }
+        .btn-action { background: var(--bg-tertiary); color: var(--text-accent); border-color: var(--bg-tertiary); }
+        .btn-action:hover { background: #1a4a7a; }
+        button:disabled { opacity: 0.4; cursor: not-allowed; }
+        .separator { width: 1px; height: 24px; background: var(--border); }
+
+        /* === STATS BAR === */
+        .stats-bar {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            padding: 4px 16px;
+            display: flex;
+            gap: 16px;
+            font-size: 11px;
+            color: var(--text-secondary);
+            flex-shrink: 0;
+            flex-wrap: wrap;
+        }
+        .stats-bar .stat-value { color: var(--text-accent); font-weight: bold; }
+        .stats-bar .state-capturing { color: var(--green); }
+        .stats-bar .state-ready { color: var(--yellow); }
+        .stats-bar .state-idle { color: var(--text-secondary); }
+        .stat-alert { color: var(--red) !important; }
+
+        /* === DISPLAY FILTER === */
+        .filter-bar {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            padding: 4px 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+        .filter-bar input {
+            flex: 1;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+            padding: 4px 10px;
+            border-radius: 3px;
+            font-family: inherit;
+            font-size: 12px;
+        }
+        .filter-bar input:focus { border-color: var(--text-accent); outline: none; }
+        .filter-bar input.filter-active { border-color: var(--green); background: rgba(68,255,68,0.05); }
+        .filter-bar .filter-label { color: var(--text-accent); font-size: 11px; font-weight: 600; white-space: nowrap; }
+        .filter-bar .filter-count { color: var(--text-secondary); font-size: 11px; white-space: nowrap; }
+
+        /* === TABS === */
+        .tab-bar {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            gap: 0;
+            flex-shrink: 0;
+        }
+        .tab-btn {
+            padding: 6px 16px;
+            background: transparent;
+            color: var(--text-secondary);
+            border: none;
+            border-bottom: 2px solid transparent;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 12px;
+            font-weight: 600;
+            transition: all 0.2s;
+            position: relative;
+        }
+        .tab-btn:hover { color: var(--text-primary); background: rgba(255,255,255,0.03); }
+        .tab-btn.active { color: var(--text-accent); border-bottom-color: var(--text-accent); }
+        .tab-badge {
+            position: absolute;
+            top: 2px; right: 2px;
+            background: var(--red);
+            color: #fff;
+            font-size: 10px;
+            padding: 0 5px;
+            border-radius: 8px;
+            min-width: 16px;
+            text-align: center;
+            display: none;
+        }
+        .tab-badge.show { display: inline-block; }
+
+        /* === TAB PANELS === */
+        .tab-panel { display: none; flex: 1; overflow: hidden; flex-direction: column; }
+        .tab-panel.active { display: flex; }
+
+        /* === PACKET TABLE === */
+        .packet-table-wrap { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+        .packet-table-wrap table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        thead { position: sticky; top: 0; z-index: 10; }
+        thead th {
+            background: var(--bg-tertiary);
+            color: var(--text-accent);
+            padding: 5px 8px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 11px;
+            border-bottom: 2px solid var(--text-accent);
+            white-space: nowrap;
+            user-select: none;
+        }
+        .table-body-wrap { flex: 1; overflow-y: auto; overflow-x: hidden; }
+        tbody td {
+            padding: 2px 8px;
+            border-bottom: 1px solid rgba(42,42,74,0.5);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        tbody tr:hover { background: var(--bg-row-hover); }
+        tbody tr.selected { background: var(--bg-tertiary); }
+        tbody tr.hidden-by-filter { display: none; }
+
+        .col-id { width: 55px; }
+        .col-time { width: 85px; }
+        .col-dir { width: 40px; text-align: center !important; }
+        .col-src { width: 160px; }
+        .col-dst { width: 160px; }
+        .col-proto { width: 70px; }
+        .col-len { width: 55px; text-align: right !important; }
+        .col-info { width: auto; }
+
+        .dir-in { color: var(--in-color); font-weight: bold; }
+        .dir-out { color: var(--out-color); font-weight: bold; }
+
+        .proto-tcp { color: var(--blue); }
+        .proto-udp { color: var(--purple); }
+        .proto-icmp { color: var(--yellow); }
+        .proto-arp { color: var(--orange); }
+        .proto-dns { color: #00e5ff; }
+        .proto-http { color: var(--green); }
+        .proto-https { color: #81c784; }
+        .proto-smb { color: var(--red); }
+
+        /* === ANALYSIS PANELS === */
+        .analysis-panel { flex: 1; overflow-y: auto; padding: 12px 16px; }
+        .analysis-panel table { width: 100%; border-collapse: collapse; }
+        .analysis-panel th {
+            background: var(--bg-tertiary);
+            color: var(--text-accent);
+            padding: 6px 10px;
+            text-align: left;
+            font-size: 11px;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+        }
+        .analysis-panel td {
+            padding: 5px 10px;
+            border-bottom: 1px solid var(--border);
+            font-size: 12px;
+            vertical-align: top;
+        }
+        .severity-critical { color: var(--red); font-weight: bold; }
+        .severity-high { color: var(--orange); font-weight: bold; }
+        .severity-medium { color: var(--yellow); }
+        .severity-low { color: var(--text-secondary); }
+        .severity-info { color: var(--text-accent); }
+
+        .weakness-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 10px;
+        }
+        .weakness-card .wk-header { display: flex; justify-content: space-between; margin-bottom: 6px; }
+        .weakness-card .wk-header strong { font-size: 13px; }
+        .weakness-card .wk-meta { font-size: 11px; color: var(--text-secondary); margin-bottom: 6px; }
+        .weakness-card .wk-desc { margin-bottom: 8px; font-size: 12px; }
+        .wk-exploit {
+            background: rgba(255,68,68,0.08);
+            border-left: 3px solid var(--red);
+            padding: 5px 10px;
+            margin-bottom: 4px;
+            font-size: 11px;
+        }
+        .wk-mitigation {
+            background: rgba(68,255,68,0.08);
+            border-left: 3px solid var(--green);
+            padding: 5px 10px;
+            font-size: 11px;
+        }
+
+        /* === DNS TABLE === */
+        .dns-anomaly {
+            background: rgba(255,68,68,0.1);
+            border-left: 3px solid var(--red);
+            padding: 2px 6px;
+            margin: 1px 0;
+            font-size: 10px;
+            color: var(--orange);
+        }
+        .dns-response { color: var(--green); }
+        .dns-query { color: var(--blue); }
+        .dns-answers { font-size: 11px; color: var(--text-accent); }
+
+        /* === TCP CONNECTION TABLE === */
+        .tcp-state { font-weight: bold; padding: 1px 6px; border-radius: 3px; font-size: 11px; }
+        .tcp-established { color: var(--green); background: rgba(68,255,68,0.1); }
+        .tcp-synsent, .tcp-synreceived { color: var(--yellow); background: rgba(255,187,51,0.1); }
+        .tcp-finwait, .tcp-closing { color: var(--orange); background: rgba(255,136,0,0.1); }
+        .tcp-closed { color: var(--text-secondary); background: rgba(160,160,176,0.1); }
+        .tcp-reset { color: var(--red); background: rgba(255,68,68,0.1); }
+        .tcp-anomaly {
+            background: rgba(255,68,68,0.1);
+            border-left: 3px solid var(--red);
+            padding: 2px 6px;
+            margin: 1px 0;
+            font-size: 10px;
+            color: var(--orange);
+        }
+        .tcp-bytes-bar {
+            display: flex;
+            height: 8px;
+            border-radius: 4px;
+            overflow: hidden;
+            background: var(--bg-primary);
+            min-width: 80px;
+        }
+        .tcp-bytes-client { background: var(--blue); height: 100%; }
+        .tcp-bytes-server { background: var(--orange); height: 100%; }
+
+        /* === HTTP TABLE === */
+        .http-request { color: var(--blue); font-weight: 600; }
+        .http-response { color: var(--green); }
+        .http-method-get { color: var(--green); }
+        .http-method-post { color: var(--orange); }
+        .http-method-put { color: var(--yellow); }
+        .http-method-delete { color: var(--red); }
+        .http-anomaly {
+            background: rgba(255,68,68,0.1);
+            border-left: 3px solid var(--red);
+            padding: 2px 6px;
+            margin: 1px 0;
+            font-size: 10px;
+            color: var(--orange);
+        }
+        .http-url { color: var(--text-accent); font-size: 12px; word-break: break-all; }
+        .http-status-2xx { color: var(--green); }
+        .http-status-3xx { color: var(--blue); }
+        .http-status-4xx { color: var(--orange); }
+        .http-status-5xx { color: var(--red); }
+
+        /* === HOSTS TABLE === */
+        .host-private { color: var(--green); }
+        .host-public { color: var(--orange); }
+        .host-os { font-size: 11px; padding: 1px 6px; border-radius: 3px; }
+        .host-os-linux { color: var(--yellow); background: rgba(255,187,51,0.1); }
+        .host-os-windows { color: var(--blue); background: rgba(68,136,255,0.1); }
+        .host-os-cisco { color: var(--purple); background: rgba(187,68,255,0.1); }
+        .host-ports { display: flex; flex-wrap: wrap; gap: 3px; }
+        .host-port-tag {
+            background: var(--bg-tertiary);
+            color: var(--text-accent);
+            padding: 0 5px;
+            border-radius: 3px;
+            font-size: 10px;
+        }
+        .host-anomaly {
+            background: rgba(255,68,68,0.1);
+            border-left: 3px solid var(--red);
+            padding: 2px 6px;
+            margin: 1px 0;
+            font-size: 10px;
+            color: var(--orange);
+        }
+        .host-traffic-bar {
+            display: flex;
+            height: 8px;
+            border-radius: 4px;
+            overflow: hidden;
+            background: var(--bg-primary);
+            min-width: 80px;
+        }
+        .host-traffic-sent { background: var(--blue); height: 100%; }
+        .host-traffic-recv { background: var(--green); height: 100%; }
+
+        /* === L2/L3 FINDINGS === */
+        .l2l3-summary {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+            padding: 8px 0;
+        }
+        .l2l3-sev-pill {
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .l2l3-sev-critical { background: rgba(255,68,68,0.2); color: var(--red); }
+        .l2l3-sev-high { background: rgba(255,136,0,0.2); color: var(--orange); }
+        .l2l3-sev-medium { background: rgba(255,187,51,0.2); color: var(--yellow); }
+        .l2l3-sev-low { background: rgba(160,160,176,0.2); color: var(--text-secondary); }
+        .l2l3-sev-info { background: rgba(0,212,255,0.15); color: var(--text-accent); }
+        .l2l3-finding-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            border-left: 4px solid var(--border);
+        }
+        .l2l3-finding-card.sev-critical { border-left-color: var(--red); }
+        .l2l3-finding-card.sev-high { border-left-color: var(--orange); }
+        .l2l3-finding-card.sev-medium { border-left-color: var(--yellow); }
+        .l2l3-finding-card.sev-low { border-left-color: var(--text-secondary); }
+        .l2l3-finding-card.sev-info { border-left-color: var(--text-accent); }
+        .l2l3-finding-card .fc-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+        .l2l3-finding-card .fc-proto { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: var(--bg-tertiary); color: var(--text-accent); font-weight: 600; }
+        .l2l3-finding-card .fc-title { font-size: 13px; font-weight: 600; }
+        .l2l3-finding-card .fc-meta { font-size: 11px; color: var(--text-secondary); margin-bottom: 4px; }
+        .l2l3-finding-card .fc-detail { font-size: 12px; color: var(--text-primary); line-height: 1.5; }
+        .l2l3-device-section { margin-top: 16px; }
+        .l2l3-device-section h4 { color: var(--text-accent); margin-bottom: 8px; font-size: 13px; }
+
+        .empty-state { text-align: center; padding: 60px 20px; color: var(--text-secondary); }
+        .empty-state .icon { font-size: 40px; margin-bottom: 12px; }
+
+        /* === DETAIL PANEL with HEX DUMP === */
+        .detail-panel {
+            height: 220px;
+            background: var(--bg-secondary);
+            border-top: 2px solid var(--border);
+            overflow: hidden;
+            display: flex;
+            flex-shrink: 0;
+            font-size: 12px;
+        }
+        .detail-info {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px 16px;
+            min-width: 300px;
+        }
+        .detail-info h4 { color: var(--text-accent); margin-bottom: 6px; }
+        .detail-row { display: flex; gap: 12px; margin-bottom: 2px; }
+        .detail-label { color: var(--text-secondary); min-width: 100px; }
+        .detail-value { color: var(--text-primary); }
+        .detail-hex {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px 12px;
+            border-left: 1px solid var(--border);
+            background: var(--bg-primary);
+            min-width: 400px;
+        }
+        .detail-hex h4 { color: var(--text-accent); margin-bottom: 6px; }
+        .hex-dump {
+            font-size: 11px;
+            line-height: 1.6;
+            white-space: pre;
+            color: var(--text-primary);
+        }
+        .hex-offset { color: var(--text-accent); }
+        .hex-byte { color: var(--text-primary); }
+        .hex-ascii { color: var(--green); }
+        .hex-nonprint { color: var(--text-secondary); }
+
+        /* === CONNECTION STATUS === */
+        .conn-status { display: flex; align-items: center; gap: 4px; font-size: 11px; }
+        .conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
+        .conn-dot.connected { background: var(--green); }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-primary); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #3a3a5a; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+    </style>
+</head>
+<body>
+    <!-- HEADER -->
+    <div class="header">
+        <div class="logo">RED <span>Packet Sniffer</span></div>
+        <div style="flex:1"></div>
+        <div class="conn-status">
+            <div class="conn-dot" id="connDot"></div>
+            <span id="connText">Disconnected</span>
+        </div>
+    </div>
+
+    <!-- TOOLBAR -->
+    <div class="toolbar">
+        <label>Adapter:</label>
+        <select id="adapterSelect" disabled>
+            <option value="">-- Click "Load" to list adapters --</option>
+        </select>
+        <button class="btn-action" id="btnLoadAdapters">Load</button>
+        <div class="separator"></div>
+
+        <label>Protocol:</label>
+        <input type="text" id="filterProtocol" placeholder="TCP,UDP" style="width:80px">
+        <label>Port:</label>
+        <input type="text" id="filterPort" placeholder="80,443" style="width:80px">
+        <label>IP:</label>
+        <input type="text" id="filterIP" placeholder="192.168.1.1" style="width:110px">
+        <label>Subnet:</label>
+        <input type="text" id="filterSubnet" placeholder="10.0.0.0/24" style="width:100px">
+
+        <div class="checkbox-wrap">
+            <input type="checkbox" id="filterPromisc">
+            <label for="filterPromisc">Promiscuous</label>
+        </div>
+        <div class="separator"></div>
+
+        <button class="btn-start" id="btnStart" disabled>&#9654; Start</button>
+        <button class="btn-stop" id="btnStop" disabled>&#9632; Stop</button>
+        <button class="btn-action" id="btnClear">Clear</button>
+
+        <div style="flex:1"></div>
+        <button class="btn-action" id="btnExportPcap">Export PCAP</button>
+        <button class="btn-action" id="btnExportReport">Report</button>
+    </div>
+
+    <!-- STATS BAR -->
+    <div class="stats-bar">
+        <span>State: <span class="stat-value" id="statState">Idle</span></span>
+        <span>Packets: <span class="stat-value" id="statTotal">0</span></span>
+        <span>Filtered: <span class="stat-value" id="statFiltered">0</span></span>
+        <span>Bytes: <span class="stat-value" id="statBytes">0</span></span>
+        <span>Buffer: <span class="stat-value" id="statBuffer">0</span></span>
+        <span>PPS: <span class="stat-value" id="statPPS">0</span></span>
+        <span>Elapsed: <span class="stat-value" id="statElapsed">0s</span></span>
+        <span>Creds: <span class="stat-value" id="statCreds">0</span></span>
+        <span>Weak: <span class="stat-value" id="statWeaknesses">0</span></span>
+        <span>DNS: <span class="stat-value" id="statDns">0</span></span>
+        <span>TCP: <span class="stat-value" id="statTcp">0</span></span>
+        <span>HTTP: <span class="stat-value" id="statHttp">0</span></span>
+        <span>Hosts: <span class="stat-value" id="statHosts">0</span></span>
+        <span>L2/L3: <span class="stat-value" id="statL2L3">0</span></span>
+        <span>VoIP: <span class="stat-value" id="statVoip">0</span></span>
+    </div>
+
+    <!-- DISPLAY FILTER -->
+    <div class="filter-bar">
+        <span class="filter-label">Display Filter:</span>
+        <input type="text" id="displayFilter" placeholder="ip.src==192.168.1.1 || proto==TCP || port==443 || dns || keyword...">
+        <span class="filter-count" id="filterCount"></span>
+    </div>
+
+    <!-- TAB BAR -->
+    <div class="tab-bar">
+        <button class="tab-btn active" data-tab="packets">Packets</button>
+        <button class="tab-btn" data-tab="credentials">
+            Credentials <span class="tab-badge" id="credBadge">0</span>
+        </button>
+        <button class="tab-btn" data-tab="weaknesses">
+            Weaknesses <span class="tab-badge" id="weakBadge">0</span>
+        </button>
+        <button class="tab-btn" data-tab="dns">
+            DNS <span class="tab-badge" id="dnsBadge">0</span>
+        </button>
+        <button class="tab-btn" data-tab="tcp">
+            TCP Connections <span class="tab-badge" id="tcpBadge">0</span>
+        </button>
+        <button class="tab-btn" data-tab="http">
+            HTTP <span class="tab-badge" id="httpBadge">0</span>
+        </button>
+        <button class="tab-btn" data-tab="hosts">
+            Hosts <span class="tab-badge" id="hostsBadge">0</span>
+        </button>
+        <button class="tab-btn" data-tab="l2l3">
+            L2/L3 Protocols <span class="tab-badge" id="l2l3Badge">0</span>
+        </button>
+        <button class="tab-btn" data-tab="voip">
+            VoIP/SIP <span class="tab-badge" id="voipBadge">0</span>
+        </button>
+        <button class="tab-btn" data-tab="arpspoof">
+            ARP Spoof
+        </button>
+        <button class="tab-btn" data-tab="vlanhop">
+            VLAN Hop
+        </button>
+    </div>
+
+    <!-- TAB: PACKETS -->
+    <div class="tab-panel active" id="tab-packets">
+        <div class="packet-table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th class="col-id">#</th>
+                        <th class="col-time">Time</th>
+                        <th class="col-dir">Dir</th>
+                        <th class="col-src">Source</th>
+                        <th class="col-dst">Destination</th>
+                        <th class="col-proto">Protocol</th>
+                        <th class="col-len">Len</th>
+                        <th class="col-info">Info</th>
+                    </tr>
+                </thead>
+            </table>
+            <div class="table-body-wrap" id="tableBodyWrap">
+                <table>
+                    <tbody id="packetBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB: CREDENTIALS -->
+    <div class="tab-panel" id="tab-credentials">
+        <div class="analysis-panel" id="credPanel">
+            <div class="empty-state" id="credEmpty">
+                <div class="icon">&#128274;</div>
+                <div>No credentials captured yet</div>
+                <div style="font-size:11px;margin-top:4px">Credentials from cleartext protocols (HTTP Basic, FTP, Telnet, SMTP, POP3, IMAP, NTLM) will appear here</div>
+            </div>
+            <table style="display:none" id="credTable">
+                <thead>
+                    <tr>
+                        <th style="width:80px">Time</th>
+                        <th style="width:120px">Protocol</th>
+                        <th style="width:130px">Source</th>
+                        <th style="width:130px">Destination</th>
+                        <th style="width:150px">Username</th>
+                        <th style="width:150px">Password</th>
+                        <th style="width:80px">Severity</th>
+                        <th>Raw Data</th>
+                    </tr>
+                </thead>
+                <tbody id="credBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- TAB: WEAKNESSES -->
+    <div class="tab-panel" id="tab-weaknesses">
+        <div class="analysis-panel" id="weakPanel">
+            <div class="empty-state" id="weakEmpty">
+                <div class="icon">&#128737;</div>
+                <div>No protocol weaknesses detected yet</div>
+                <div style="font-size:11px;margin-top:4px">LLMNR, NBT-NS, mDNS, WPAD, cleartext protocols, NTLM relay, SMB signing, ARP, DHCPv6</div>
+            </div>
+            <div id="weakCards" style="display:none"></div>
+        </div>
+    </div>
+
+    <!-- TAB: DNS -->
+    <div class="tab-panel" id="tab-dns">
+        <div class="analysis-panel" id="dnsPanel">
+            <div class="empty-state" id="dnsEmpty">
+                <div class="icon">&#127760;</div>
+                <div>No DNS queries captured yet</div>
+                <div style="font-size:11px;margin-top:4px">DNS queries/responses, tunneling detection, DGA detection, C2 beacon analysis</div>
+            </div>
+            <table style="display:none" id="dnsTable">
+                <thead>
+                    <tr>
+                        <th style="width:80px">Time</th>
+                        <th style="width:50px">Type</th>
+                        <th style="width:50px">QType</th>
+                        <th style="width:130px">Source</th>
+                        <th style="width:130px">Dest</th>
+                        <th>Query Name</th>
+                        <th style="width:70px">RCode</th>
+                        <th style="width:40px">Freq</th>
+                        <th>Answers / Anomalies</th>
+                    </tr>
+                </thead>
+                <tbody id="dnsBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- TAB: TCP CONNECTIONS -->
+    <div class="tab-panel" id="tab-tcp">
+        <div class="analysis-panel" id="tcpPanel">
+            <div class="empty-state" id="tcpEmpty">
+                <div class="icon">&#128279;</div>
+                <div>No TCP connections tracked yet</div>
+                <div style="font-size:11px;margin-top:4px">TCP state machine, port scan detection, beacon detection, lateral movement</div>
+            </div>
+            <table style="display:none" id="tcpTable">
+                <thead>
+                    <tr>
+                        <th style="width:50px">#</th>
+                        <th style="width:70px">State</th>
+                        <th style="width:160px">Client</th>
+                        <th style="width:160px">Server</th>
+                        <th style="width:70px">Pkts</th>
+                        <th style="width:100px">Bytes</th>
+                        <th style="width:120px">C/S Ratio</th>
+                        <th style="width:80px">Duration</th>
+                        <th>Anomalies</th>
+                    </tr>
+                </thead>
+                <tbody id="tcpBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- TAB: HTTP -->
+    <div class="tab-panel" id="tab-http">
+        <div class="analysis-panel" id="httpPanel">
+            <div class="empty-state" id="httpEmpty">
+                <div class="icon">&#127760;</div>
+                <div>No HTTP traffic captured yet</div>
+                <div style="font-size:11px;margin-top:4px">Cleartext HTTP requests/responses, cookies, auth headers, security anomalies</div>
+            </div>
+            <table style="display:none" id="httpTable">
+                <thead>
+                    <tr>
+                        <th style="width:80px">Time</th>
+                        <th style="width:50px">Type</th>
+                        <th style="width:60px">Method</th>
+                        <th style="width:130px">Source</th>
+                        <th style="width:130px">Dest</th>
+                        <th style="width:150px">Host</th>
+                        <th>URL / Status</th>
+                        <th style="width:70px">Status</th>
+                        <th>Anomalies</th>
+                    </tr>
+                </thead>
+                <tbody id="httpBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- TAB: HOSTS -->
+    <div class="tab-panel" id="tab-hosts">
+        <div class="analysis-panel" id="hostsPanel">
+            <div class="empty-state" id="hostsEmpty">
+                <div class="icon">&#128421;</div>
+                <div>No network hosts discovered yet</div>
+                <div style="font-size:11px;margin-top:4px">Passive host discovery, OS fingerprint, MAC vendor, open ports, traffic profiling</div>
+            </div>
+            <table style="display:none" id="hostsTable">
+                <thead>
+                    <tr>
+                        <th style="width:130px">IP Address</th>
+                        <th style="width:50px">Type</th>
+                        <th style="width:130px">MAC / Vendor</th>
+                        <th style="width:80px">OS</th>
+                        <th style="width:40px">TTL</th>
+                        <th style="width:130px">Open Ports</th>
+                        <th style="width:50px">Peers</th>
+                        <th style="width:100px">Traffic</th>
+                        <th style="width:120px">Sent/Recv</th>
+                        <th style="width:70px">First</th>
+                        <th>Anomalies</th>
+                    </tr>
+                </thead>
+                <tbody id="hostsBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- L2/L3 PROTOCOLS TAB -->
+    <div class="tab-panel" id="tab-l2l3">
+        <div class="analysis-panel" id="l2l3Panel">
+            <div class="empty-state" id="l2l3Empty">
+                <div class="icon">&#128737;</div>
+                <div>No L2/L3 protocol findings yet</div>
+                <div style="font-size:11px;margin-top:4px">OSPF, STP, CDP/LLDP, HSRP/VRRP, EIGRP, ICMP Redirect, GRE tunnel detection</div>
+            </div>
+            <div style="display:none" id="l2l3Content">
+                <div class="l2l3-summary" id="l2l3Summary"></div>
+                <div id="l2l3Devices"></div>
+                <div id="l2l3Cards"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- VoIP/SIP TAB -->
+    <div class="tab-panel" id="tab-voip">
+        <div class="analysis-panel" id="voipPanel">
+            <div class="empty-state" id="voipEmpty">
+                <div class="icon">&#128222;</div>
+                <div>No VoIP/SIP/WebRTC traffic captured yet</div>
+                <div style="font-size:11px;margin-top:4px">SIP Digest Auth, RTP streams, STUN/TURN bindings, call tracking</div>
+            </div>
+            <div style="display:none" id="voipContent">
+                <div class="voip-summary" id="voipSummary" style="padding:8px 12px;display:flex;gap:16px;flex-wrap:wrap;border-bottom:1px solid var(--border)"></div>
+                <!-- SIP Credentials -->
+                <div id="sipCredsSection" style="display:none;padding:8px 12px">
+                    <h4 style="color:var(--red);margin-bottom:6px">SIP Credentials</h4>
+                    <div class="table-wrap" style="max-height:200px;overflow:auto">
+                        <table><thead><tr>
+                            <th>Time</th><th>Source</th><th>Dest</th><th>Username</th><th>Realm</th><th>Algorithm</th><th>Hashcat</th>
+                        </tr></thead><tbody id="sipCredsBody"></tbody></table>
+                    </div>
+                </div>
+                <!-- SIP Calls -->
+                <div id="sipCallsSection" style="display:none;padding:8px 12px">
+                    <h4 style="color:var(--text-accent);margin-bottom:6px">SIP Calls</h4>
+                    <div class="table-wrap" style="max-height:200px;overflow:auto">
+                        <table><thead><tr>
+                            <th>State</th><th>Caller</th><th>Callee</th><th>Duration</th><th>User-Agent</th><th>Source</th>
+                        </tr></thead><tbody id="sipCallsBody"></tbody></table>
+                    </div>
+                </div>
+                <!-- RTP Streams -->
+                <div id="rtpSection" style="display:none;padding:8px 12px">
+                    <h4 style="color:var(--text-accent);margin-bottom:6px">RTP Streams</h4>
+                    <div class="table-wrap" style="max-height:200px;overflow:auto">
+                        <table><thead><tr>
+                            <th>Source</th><th>Dest</th><th>Codec</th><th>Packets</th><th>Cleartext</th>
+                        </tr></thead><tbody id="rtpBody"></tbody></table>
+                    </div>
+                </div>
+                <!-- STUN Bindings -->
+                <div id="stunSection" style="display:none;padding:8px 12px">
+                    <h4 style="color:var(--text-accent);margin-bottom:6px">STUN/TURN Bindings</h4>
+                    <div class="table-wrap" style="max-height:200px;overflow:auto">
+                        <table><thead><tr>
+                            <th>Source</th><th>Server</th><th>Method</th><th>Mapped Address</th>
+                        </tr></thead><tbody id="stunBody"></tbody></table>
+                    </div>
+                </div>
+                <!-- VoIP Findings -->
+                <div id="voipFindingsCards" style="padding:8px 12px"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ARP SPOOF TAB -->
+    <div class="tab-panel" id="tab-arpspoof">
+        <div class="analysis-panel" style="padding:16px;overflow:auto">
+            <!-- Warning banner + Pre-check -->
+            <div id="arpPreCheck" style="background:rgba(255,80,80,0.1);border:1px solid var(--red);border-radius:6px;padding:10px 14px;margin-bottom:12px;display:none">
+                <span style="color:var(--red);font-weight:bold">&#9888; Capture chưa chạy!</span>
+                <span style="color:var(--text-secondary);font-size:12px;margin-left:8px">Phải start capture trên adapter trước khi dùng ARP Spoofing.</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+                <h3 style="color:var(--red);margin:0">&#9888; ARP Spoofing — MITM</h3>
+                <div id="arpLiveIndicator" style="display:none;background:var(--red);color:#fff;font-size:11px;padding:2px 8px;border-radius:10px;animation:pulse 1.5s infinite">
+                    &#9679; ACTIVE
+                </div>
+                <span style="margin-left:auto;color:var(--text-secondary);font-size:12px">
+                    <strong style="color:var(--yellow)">Chỉ dùng trong authorized red team engagement</strong>
+                </span>
+            </div>
+
+            <div style="display:flex;gap:12px;flex-wrap:wrap">
+                <!-- LEFT COLUMN: Config + Control -->
+                <div style="flex:1;min-width:380px">
+                    <!-- Gateway Config -->
+                    <div style="background:var(--bg-secondary);padding:12px;border-radius:6px;margin-bottom:12px;border:1px solid var(--border)">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                            <h4 style="margin:0">&#127760; Gateway</h4>
+                            <button class="btn-action" onclick="arpAutoDetect()" style="margin-left:auto;font-size:11px">&#128270; Auto Detect</button>
+                        </div>
+                        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+                            <input type="text" id="arpGwIp" placeholder="Gateway IP" style="width:130px" title="Gateway IP address">
+                            <input type="text" id="arpGwMac" placeholder="Gateway MAC" style="width:150px" title="Gateway MAC address">
+                            <input type="number" id="arpInterval" value="2000" style="width:65px" min="500" step="500" title="Poison interval (ms)">
+                            <span style="color:var(--text-secondary);font-size:11px">ms</span>
+                            <button class="btn-action" onclick="arpConfigure()" style="font-size:11px">&#10004; Set</button>
+                        </div>
+                        <div id="arpGwStatus" style="font-size:11px;color:var(--text-secondary)"></div>
+                    </div>
+
+                    <!-- Targets -->
+                    <div style="background:var(--bg-secondary);padding:12px;border-radius:6px;margin-bottom:12px;border:1px solid var(--border)">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                            <h4 style="margin:0">&#127919; Targets</h4>
+                            <button class="btn-action" onclick="arpLoadCandidates()" style="margin-left:auto;font-size:11px" title="Load discovered hosts from network scan">&#128257; Pick from discovered hosts</button>
+                        </div>
+                        <!-- Manual add -->
+                        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+                            <input type="text" id="arpTargetIp" placeholder="Target IP" style="width:130px" title="Target IP">
+                            <input type="text" id="arpTargetMac" placeholder="MAC (auto-resolve)" style="width:150px" title="MAC — leave empty to auto-resolve">
+                            <button class="btn-action" onclick="arpResolveMac()" style="font-size:11px" title="Resolve MAC from ARP cache">&#128270;</button>
+                            <button class="btn-action" onclick="arpAddTarget()" style="font-size:11px">&#10010; Add</button>
+                        </div>
+                        <!-- Target list -->
+                        <div id="arpTargetList" style="max-height:150px;overflow-y:auto">
+                            <div style="color:var(--text-secondary);font-size:11px">No targets added</div>
+                        </div>
+                    </div>
+
+                    <!-- Control -->
+                    <div style="background:var(--bg-secondary);padding:12px;border-radius:6px;border:1px solid var(--border)" id="arpControlBox">
+                        <div style="display:flex;gap:8px;align-items:center">
+                            <button class="btn-start" id="arpStartBtn" onclick="arpStart()" style="flex:1">&#9654; Start ARP Spoofing</button>
+                            <button class="btn-stop" id="arpStopBtn" onclick="arpStop()" disabled style="flex:1">&#9632; Stop &amp; Restore</button>
+                        </div>
+                        <div style="display:flex;gap:12px;align-items:center;margin-top:8px;font-size:12px">
+                            <span>State: <strong id="arpStatusText" style="color:var(--text-secondary)">Idle</strong></span>
+                            <span style="margin-left:auto">Packets sent: <strong id="arpPktCount" style="color:var(--cyan)">0</strong></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- RIGHT COLUMN: Discovered Hosts Picker -->
+                <div id="arpCandidatePanel" style="flex:1;min-width:300px;display:none">
+                    <div style="background:var(--bg-secondary);padding:12px;border-radius:6px;border:1px solid var(--border);max-height:400px;overflow-y:auto">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                            <h4 style="margin:0">&#128421; Discovered Hosts</h4>
+                            <button class="btn-action" onclick="arpLoadCandidates()" style="margin-left:auto;font-size:11px">&#128260; Refresh</button>
+                            <button class="btn-action" onclick="document.getElementById('arpCandidatePanel').style.display='none'" style="font-size:11px">&#10006;</button>
+                        </div>
+                        <div id="arpCandidateList" style="font-size:12px">
+                            <div style="color:var(--text-secondary)">Loading...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- VLAN HOPPING TAB -->
+    <div class="tab-panel" id="tab-vlanhop">
+        <div class="analysis-panel" style="padding:16px;overflow:auto">
+            <!-- Warning banner -->
+            <div id="vlanPreCheck" style="background:rgba(255,80,80,0.1);border:1px solid var(--red);border-radius:6px;padding:10px 14px;margin-bottom:12px;display:none">
+                <span style="color:var(--red);font-weight:bold">&#9888; Capture chưa chạy!</span>
+                <span style="color:var(--text-secondary);font-size:12px;margin-left:8px">Phải start capture trên adapter trước khi dùng VLAN Hopping.</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+                <h3 style="color:var(--purple);margin:0">&#128268; VLAN Hopping</h3>
+                <div id="vlanLiveIndicator" style="display:none;font-size:11px;padding:2px 8px;border-radius:10px;animation:pulse 1.5s infinite">
+                    &#9679; ACTIVE
+                </div>
+                <span style="margin-left:auto;color:var(--text-secondary);font-size:12px">
+                    <strong style="color:var(--yellow)">Chỉ dùng trong authorized red team engagement</strong>
+                </span>
+            </div>
+
+            <div style="display:flex;gap:12px;flex-wrap:wrap">
+                <!-- LEFT COLUMN: Config + Control -->
+                <div style="flex:1;min-width:380px">
+                    <!-- Auto Detect Info -->
+                    <div style="background:var(--bg-secondary);padding:12px;border-radius:6px;margin-bottom:12px;border:1px solid var(--border)">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                            <h4 style="margin:0">&#128270; Auto Detect</h4>
+                            <button class="btn-action" onclick="vlanAutoDetect()" style="margin-left:auto;font-size:11px">&#128270; Scan Network</button>
+                        </div>
+                        <div id="vlanDetectStatus" style="font-size:11px;color:var(--text-secondary)">Click Scan Network để tự động phát hiện Native VLAN và DTP từ CDP/LLDP</div>
+                    </div>
+
+                    <!-- Config -->
+                    <div style="background:var(--bg-secondary);padding:12px;border-radius:6px;margin-bottom:12px;border:1px solid var(--border)">
+                        <h4 style="margin:0 0 8px 0">&#9881; Configuration</h4>
+                        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+                            <label>Target VLAN:</label>
+                            <input type="number" id="vlanTargetVlan" value="" min="1" max="4094" style="width:70px" placeholder="VLAN ID">
+                            <label style="margin-left:8px">Native VLAN:</label>
+                            <input type="number" id="vlanNativeVlan" value="1" min="1" max="4094" style="width:70px">
+                            <label style="margin-left:8px">DTP Timeout:</label>
+                            <input type="number" id="vlanDtpTimeout" value="30" min="10" max="120" style="width:55px">
+                            <span style="color:var(--text-secondary);font-size:11px">sec</span>
+                        </div>
+                        <div style="display:flex;gap:8px">
+                            <button class="btn-action" onclick="vlanConfigure()" style="font-size:11px">&#10004; Configure</button>
+                        </div>
+                        <div id="vlanConfigStatus" style="font-size:11px;color:var(--text-secondary);margin-top:4px"></div>
+                    </div>
+
+                    <!-- Control -->
+                    <div style="background:var(--bg-secondary);padding:12px;border-radius:6px;margin-bottom:12px;border:1px solid var(--border)">
+                        <div style="display:flex;gap:8px;align-items:center">
+                            <button class="btn-start" id="vlanStartBtn" onclick="vlanStart()" style="flex:1">&#9654; Start VLAN Hopping</button>
+                            <button class="btn-stop" id="vlanStopBtn" onclick="vlanStop()" disabled style="flex:1">&#9632; Stop</button>
+                        </div>
+                        <div style="display:flex;gap:12px;align-items:center;margin-top:8px;font-size:12px;flex-wrap:wrap">
+                            <span>State: <strong id="vlanStateText" style="color:var(--text-secondary)">Idle</strong></span>
+                            <span>Method: <strong id="vlanMethodText" style="color:var(--text-secondary)">None</strong></span>
+                            <span>DTP: <strong id="vlanDtpText" style="color:var(--text-secondary)">Not detected</strong></span>
+                            <span style="margin-left:auto">DTP Sent: <strong id="vlanDtpSent">0</strong> | DblTag Sent: <strong id="vlanDblTagSent">0</strong></span>
+                        </div>
+                    </div>
+
+                    <!-- Double Tag ARP Probe -->
+                    <div style="background:var(--bg-secondary);padding:12px;border-radius:6px;border:1px solid var(--border)">
+                        <h4 style="margin:0 0 8px 0">&#128232; Double Tag ARP Probe</h4>
+                        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                            <input type="text" id="vlanArpTargetIp" placeholder="Target IP trong target VLAN" style="width:200px">
+                            <button class="btn-action" onclick="vlanArpRequest()" style="font-size:11px">&#128232; Send ARP Request</button>
+                        </div>
+                        <div id="vlanArpStatus" style="font-size:11px;color:var(--text-secondary);margin-top:4px"></div>
+                        <div style="color:var(--text-secondary);font-size:11px;margin-top:6px">
+                            ⚠ Double Tagging là <strong style="color:var(--yellow)">ONE-WAY ONLY</strong> — response không quay lại attacker.<br>
+                            Tip: Dùng kết hợp trunk port (DTP) hoặc traffic mirroring để capture response.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- RIGHT COLUMN: Workflow diagram -->
+                <div style="flex:0.8;min-width:300px">
+                    <div style="background:var(--bg-secondary);padding:12px;border-radius:6px;border:1px solid var(--border)">
+                        <h4 style="margin:0 0 8px 0">&#128640; Workflow</h4>
+                        <div style="font-size:12px;line-height:1.8">
+                            <div id="wfStep1" style="padding:6px 10px;border-radius:4px;margin-bottom:4px;border-left:3px solid var(--text-secondary)">
+                                <strong>1. DTP Probe</strong> — Lắng nghe + gửi DTP Desirable frame
+                            </div>
+                            <div style="text-align:center;color:var(--text-secondary);font-size:10px">↓ Switch respond? ↓</div>
+                            <div style="display:flex;gap:8px;margin-top:4px">
+                                <div id="wfStep2a" style="flex:1;padding:6px 10px;border-radius:4px;border-left:3px solid var(--text-secondary)">
+                                    <strong style="color:var(--green)">✓ DTP Spoofing</strong><br>
+                                    <span style="font-size:11px">Negotiate trunk → nhận ALL VLANs</span>
+                                </div>
+                                <div id="wfStep2b" style="flex:1;padding:6px 10px;border-radius:4px;border-left:3px solid var(--text-secondary)">
+                                    <strong style="color:var(--yellow)">✗ Double Tagging</strong><br>
+                                    <span style="font-size:11px">One-way vào target VLAN</span>
+                                </div>
+                            </div>
+                            <div style="text-align:center;color:var(--text-secondary);font-size:10px;margin-top:4px">↓</div>
+                            <div style="padding:6px 10px;border-radius:4px;margin-top:4px;border-left:3px solid var(--text-secondary)">
+                                <strong>3. ARP Spoofing</strong> — MITM trong target VLAN
+                            </div>
+                        </div>
+                    </div>
+                    <!-- VLAN Hop Log -->
+                    <div style="background:var(--bg-secondary);padding:12px;border-radius:6px;border:1px solid var(--border);margin-top:12px;max-height:200px;overflow-y:auto">
+                        <h4 style="margin:0 0 6px 0">&#128220; Log</h4>
+                        <div id="vlanLogArea" style="font-size:11px;color:var(--text-secondary);line-height:1.6">
+                            Waiting for VLAN Hopping activity...
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- DETAIL PANEL (split: info + hex dump) -->
+    <div class="detail-panel" id="detailPanel">
+        <div class="detail-info">
+            <h4>Packet Detail</h4>
+            <div id="detailContent" style="color:var(--text-secondary)">Click a packet to view details</div>
+        </div>
+        <div class="detail-hex">
+            <h4>Hex Dump</h4>
+            <div class="hex-dump" id="hexDump" style="color:var(--text-secondary)">Select a packet to view hex dump</div>
+        </div>
+    </div>
+
+    <script>
+    // =============================================
+    // SignalR Connection
+    // =============================================
+    const connection = new signalR.HubConnectionBuilder()
+        .withUrl("/hub/packets")
+        .withAutomaticReconnect([0, 1000, 5000, 10000])
+        .build();
+
+    let packets = [];
+    let credentials = [];
+    let weaknesses = [];
+    let dnsRecords = [];
+    let tcpConnections = {};
+    let httpEntries = [];
+    let networkHosts = {};
+    let l2l3Findings = [];
+    let autoScroll = true;
+    let currentFilter = '';
+    const MAX_TABLE_ROWS = 5000;
+
+    // Connection status
+    function setConnected(connected) {
+        document.getElementById('connDot').classList.toggle('connected', connected);
+        document.getElementById('connText').textContent = connected ? 'Connected' : 'Disconnected';
+    }
+
+    connection.onclose(() => setConnected(false));
+    connection.onreconnecting(() => setConnected(false));
+    connection.onreconnected(() => setConnected(true));
+
+    async function startConnection() {
+        try {
+            await connection.start();
+            setConnected(true);
+        } catch (err) {
+            console.error('SignalR connection failed:', err);
+            setTimeout(startConnection, 3000);
+        }
+    }
+
+    // =============================================
+    // Tab switching
+    // =============================================
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+            btn.classList.add('active');
+            document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+            // Pre-check khi switch sang ARP Spoof / VLAN Hop tab
+            if (btn.dataset.tab === 'arpspoof') arpCheckCaptureState();
+            if (btn.dataset.tab === 'vlanhop') vlanCheckCaptureState();
+        });
+    });
+
+    // =============================================
+    // Display Filter
+    // =============================================
+    let filterTimeout = null;
+    document.getElementById('displayFilter').addEventListener('input', (e) => {
+        clearTimeout(filterTimeout);
+        filterTimeout = setTimeout(() => {
+            currentFilter = e.target.value.trim().toLowerCase();
+            e.target.classList.toggle('filter-active', currentFilter.length > 0);
+            applyDisplayFilter();
+        }, 200);
+    });
+
+    function applyDisplayFilter() {
+        const tbody = document.getElementById('packetBody');
+        const rows = tbody.children;
+        let shown = 0;
+        let total = rows.length;
+
+        for (let i = 0; i < rows.length; i++) {
+            const row = rows[i];
+            if (!currentFilter) {
+                row.classList.remove('hidden-by-filter');
+                shown++;
+                continue;
+            }
+            const text = row.textContent.toLowerCase();
+            const match = matchFilter(text, row.dataset, currentFilter);
+            row.classList.toggle('hidden-by-filter', !match);
+            if (match) shown++;
+        }
+
+        const countEl = document.getElementById('filterCount');
+        if (currentFilter) {
+            countEl.textContent = `${shown}/${total} shown`;
+        } else {
+            countEl.textContent = '';
+        }
+    }
+
+    function matchFilter(text, dataset, filter) {
+        // Support simple expressions: ip.src==X, ip.dst==X, proto==X, port==X, or free text
+        // Support || (OR) and && (AND)
+        if (filter.includes('||')) {
+            return filter.split('||').some(part => matchFilter(text, dataset, part.trim()));
+        }
+        if (filter.includes('&&')) {
+            return filter.split('&&').every(part => matchFilter(text, dataset, part.trim()));
+        }
+
+        // Structured filters
+        if (filter.startsWith('ip.src==')) return text.includes(filter.substring(8));
+        if (filter.startsWith('ip.dst==')) return text.includes(filter.substring(8));
+        if (filter.startsWith('proto==')) return text.includes(filter.substring(7));
+        if (filter.startsWith('port==')) return text.includes(filter.substring(6));
+
+        // Free text search
+        return text.includes(filter);
+    }
+
+    // =============================================
+    // Event Handlers from Server
+    // =============================================
+    connection.on("PacketBatch", (batch) => {
+        const tbody = document.getElementById('packetBody');
+        const wrap = document.getElementById('tableBodyWrap');
+        const wasAtBottom = wrap.scrollHeight - wrap.scrollTop - wrap.clientHeight < 50;
+
+        for (const p of batch) {
+            packets.push(p);
+            const row = createPacketRow(p);
+            if (currentFilter) {
+                const text = row.textContent.toLowerCase();
+                if (!matchFilter(text, row.dataset, currentFilter)) {
+                    row.classList.add('hidden-by-filter');
+                }
+            }
+            tbody.appendChild(row);
+        }
+
+        while (tbody.children.length > MAX_TABLE_ROWS) {
+            tbody.removeChild(tbody.firstChild);
+            packets.shift();
+        }
+
+        if (autoScroll && wasAtBottom) {
+            wrap.scrollTop = wrap.scrollHeight;
+        }
+    });
+
+    connection.on("CredentialFound", (creds) => {
+        for (const c of creds) {
+            credentials.push(c);
+            addCredentialRow(c);
+        }
+        updateBadge('credBadge', credentials.length);
+    });
+
+    connection.on("WeaknessDetected", (weaks) => {
+        for (const w of weaks) {
+            weaknesses.push(w);
+            addWeaknessCard(w);
+        }
+        updateBadge('weakBadge', weaknesses.length);
+    });
+
+    connection.on("DnsRecordFound", (records) => {
+        for (const r of records) {
+            dnsRecords.push(r);
+            addDnsRow(r);
+        }
+        updateBadge('dnsBadge', dnsRecords.length);
+    });
+
+    connection.on("TcpConnectionUpdated", (conns) => {
+        for (const c of conns) {
+            tcpConnections[c.id] = c;
+            updateTcpRow(c);
+        }
+        updateBadge('tcpBadge', Object.keys(tcpConnections).length);
+    });
+
+    connection.on("HttpEntryFound", (entries) => {
+        for (const e of entries) {
+            httpEntries.push(e);
+            addHttpRow(e);
+        }
+        updateBadge('httpBadge', httpEntries.length);
+    });
+
+    connection.on("HostUpdated", (hosts) => {
+        for (const h of hosts) {
+            networkHosts[h.id] = h;
+            updateHostRow(h);
+        }
+        updateBadge('hostsBadge', Object.keys(networkHosts).length);
+    });
+
+    connection.on("L2L3FindingFound", (findings) => {
+        for (const f of findings) {
+            l2l3Findings.push(f);
+            addL2L3Finding(f);
+        }
+        updateBadge('l2l3Badge', l2l3Findings.length);
+        if (l2l3Findings.length > 0) {
+            document.getElementById('l2l3Empty').style.display = 'none';
+            document.getElementById('l2l3Content').style.display = '';
+        }
+        updateL2L3Summary();
+    });
+
+    // VoIP findings
+    let voipFindings = [];
+    connection.on("VoipFindingFound", (findings) => {
+        for (const f of findings) {
+            voipFindings.push(f);
+            addVoipFinding(f);
+        }
+        updateBadge('voipBadge', voipFindings.length);
+        if (voipFindings.length > 0) {
+            document.getElementById('voipEmpty').style.display = 'none';
+            document.getElementById('voipContent').style.display = '';
+        }
+    });
+
+    connection.on("ArpSpoofStateChanged", (state) => {
+        arpUpdateUI(state);
+    });
+
+    connection.on("VlanHopStateChanged", (status) => {
+        vlanUpdateUI(status);
+        if (status.state === 'Active') {
+            vlanLog('State → Active, method: ' + (status.activeMethod || 'unknown'));
+        } else if (status.state === 'Idle' && vlanPollTimer) {
+            clearInterval(vlanPollTimer);
+            vlanPollTimer = null;
+        }
+    });
+
+    connection.on("StatsUpdate", (stats) => {
+        document.getElementById('statTotal').textContent = stats.totalPackets.toLocaleString();
+        document.getElementById('statFiltered').textContent = stats.filteredPackets.toLocaleString();
+        document.getElementById('statBytes').textContent = formatBytes(stats.totalBytes);
+        document.getElementById('statBuffer').textContent = stats.bufferSize.toLocaleString();
+        document.getElementById('statPPS').textContent = stats.packetsPerSecond.toLocaleString();
+        document.getElementById('statElapsed').textContent = stats.elapsedSeconds + 's';
+
+        const credEl = document.getElementById('statCreds');
+        credEl.textContent = stats.credentialsFound;
+        credEl.classList.toggle('stat-alert', stats.credentialsFound > 0);
+
+        const weakEl = document.getElementById('statWeaknesses');
+        weakEl.textContent = stats.weaknessesDetected;
+        weakEl.classList.toggle('stat-alert', stats.weaknessesDetected > 0);
+
+        document.getElementById('statDns').textContent = stats.dnsQueries || 0;
+        document.getElementById('statTcp').textContent = stats.tcpConnections || 0;
+        document.getElementById('statHttp').textContent = stats.httpRequests || 0;
+        document.getElementById('statHosts').textContent = stats.networkHosts || 0;
+
+        const l2l3El = document.getElementById('statL2L3');
+        l2l3El.textContent = stats.l2l3Findings || 0;
+        l2l3El.classList.toggle('stat-alert', (stats.l2l3Findings || 0) > 0);
+
+        // VoIP stats
+        const voipTotal = (stats.voipCreds || 0) + (stats.voipCalls || 0) + (stats.rtpStreams || 0);
+        updateBadge('voipBadge', voipTotal);
+
+        // ARP spoof stats
+        if (stats.arpSpoofState && stats.arpSpoofState !== 'Idle') {
+            document.getElementById('arpStatusText').textContent = stats.arpSpoofState;
+            document.getElementById('arpPktCount').textContent = 'Packets: ' + (stats.arpSpoofPackets || 0);
+        }
+
+        // VLAN hop stats in StatsUpdate
+        if (stats.vlanHopState && stats.vlanHopState !== 'Idle') {
+            const stEl = document.getElementById('vlanStateText');
+            if (stEl) stEl.textContent = stats.vlanHopState;
+            const mtEl = document.getElementById('vlanMethodText');
+            if (mtEl) mtEl.textContent = stats.vlanHopMethod || 'None';
+            const dtEl = document.getElementById('vlanDtpText');
+            if (dtEl) dtEl.textContent = stats.vlanHopDtpDetected ? 'Detected ✓' : 'Not detected';
+        }
+    });
+
+    connection.on("StateChanged", (state) => {
+        const el = document.getElementById('statState');
+        el.textContent = state;
+        el.className = 'stat-value state-' + state.toLowerCase();
+        updateButtons(state);
+    });
+
+    connection.on("ErrorOccurred", (msg) => {
+        console.error('Capture error:', msg);
+        alert('Error: ' + msg);
+    });
+
+    // =============================================
+    // Packet Table
+    // =============================================
+    function createPacketRow(p) {
+        const tr = document.createElement('tr');
+        tr.dataset.packetId = p.id;
+        tr.onclick = () => showDetail(p, tr);
+
+        const protoClass = getProtoClass(p);
+        const dirClass = p.direction === 'IN' ? 'dir-in' : 'dir-out';
+        const src = p.srcIP ? (p.srcPort ? `${p.srcIP}:${p.srcPort}` : p.srcIP) : p.srcMac;
+        const dst = p.dstIP ? (p.dstPort ? `${p.dstIP}:${p.dstPort}` : p.dstIP) : p.dstMac;
+        const proto = p.appProtocol || p.protocol || p.etherType;
+
+        tr.innerHTML = `
+            <td class="col-id">${p.id}</td>
+            <td class="col-time">${p.timestamp}</td>
+            <td class="col-dir"><span class="${dirClass}">${p.direction}</span></td>
+            <td class="col-src" title="${src}">${src}</td>
+            <td class="col-dst" title="${dst}">${dst}</td>
+            <td class="col-proto ${protoClass}">${proto}</td>
+            <td class="col-len">${p.length}</td>
+            <td class="col-info" title="${escHtml(p.summary)}">${escHtml(p.summary)}</td>
+        `;
+        return tr;
+    }
+
+    function getProtoClass(p) {
+        const proto = (p.appProtocol || p.protocol || '').toLowerCase();
+        if (proto.includes('dns')) return 'proto-dns';
+        if (proto.includes('dhcp')) return 'proto-dns'; // DHCP cùng màu DNS (network services)
+        if (proto.includes('http') && !proto.includes('https')) return 'proto-http';
+        if (proto.includes('https') || proto.includes('tls')) return 'proto-https';
+        if (proto.includes('smb') || proto.includes('445')) return 'proto-smb';
+        if (proto.includes('gre')) return 'proto-smb'; // GRE tunnel — highlight
+        if (proto === 'tcp') return 'proto-tcp';
+        if (proto === 'udp') return 'proto-udp';
+        if (proto === 'icmp' || proto === 'icmpv6') return 'proto-icmp';
+        if (proto === 'arp') return 'proto-arp';
+        return '';
+    }
+
+    function showDetail(p, tr) {
+        document.querySelectorAll('#packetBody tr.selected').forEach(r => r.classList.remove('selected'));
+        tr.classList.add('selected');
+
+        // Detail info panel
+        document.getElementById('detailContent').innerHTML = `
+            <div class="detail-row"><span class="detail-label">Packet #</span><span class="detail-value">${p.id}</span></div>
+            <div class="detail-row"><span class="detail-label">Time</span><span class="detail-value">${p.timestamp}</span></div>
+            <div class="detail-row"><span class="detail-label">Direction</span><span class="detail-value">${p.direction === 'IN' ? 'Inbound' : 'Outbound'}</span></div>
+            <div class="detail-row"><span class="detail-label">Length</span><span class="detail-value">${p.length} bytes</span></div>
+            <hr style="border-color:var(--border);margin:4px 0">
+            <div class="detail-row"><span class="detail-label">Src MAC</span><span class="detail-value">${p.srcMac}</span></div>
+            <div class="detail-row"><span class="detail-label">Dst MAC</span><span class="detail-value">${p.dstMac}</span></div>
+            <div class="detail-row"><span class="detail-label">EtherType</span><span class="detail-value">${p.etherType}</span></div>
+            ${p.srcIP ? `
+            <hr style="border-color:var(--border);margin:4px 0">
+            <div class="detail-row"><span class="detail-label">Src IP</span><span class="detail-value">${p.srcIP}</span></div>
+            <div class="detail-row"><span class="detail-label">Dst IP</span><span class="detail-value">${p.dstIP}</span></div>
+            <div class="detail-row"><span class="detail-label">Protocol</span><span class="detail-value">${p.protocol}</span></div>
+            ` : ''}
+            ${p.srcPort ? `
+            <div class="detail-row"><span class="detail-label">Src Port</span><span class="detail-value">${p.srcPort}</span></div>
+            <div class="detail-row"><span class="detail-label">Dst Port</span><span class="detail-value">${p.dstPort}</span></div>
+            ` : ''}
+            ${p.tcpFlags ? `<div class="detail-row"><span class="detail-label">TCP Flags</span><span class="detail-value">${p.tcpFlags}</span></div>` : ''}
+            ${p.tcpOptions ? `<div class="detail-row"><span class="detail-label">TCP Options</span><span class="detail-value" style="font-family:monospace;font-size:11px">${escHtml(p.tcpOptions)}</span></div>` : ''}
+            ${p.appProtocol ? `<div class="detail-row"><span class="detail-label">App Protocol</span><span class="detail-value">${p.appProtocol}</span></div>` : ''}
+            ${p.vlanId ? `<div class="detail-row"><span class="detail-label">VLAN ID</span><span class="detail-value">${p.vlanId}${p.outerVlanId ? ' (Outer: ' + p.outerVlanId + ')' : ''}</span></div>` : ''}
+            ${p.isIPv6 ? `<div class="detail-row"><span class="detail-label">IP Version</span><span class="detail-value">IPv6</span></div>` : ''}
+            ${p.greInnerInfo ? `<div class="detail-row"><span class="detail-label">GRE Inner</span><span class="detail-value" style="color:var(--yellow)">${escHtml(p.greInnerInfo)}</span></div>` : ''}
+            <div class="detail-row"><span class="detail-label">Summary</span><span class="detail-value">${escHtml(p.summary)}</span></div>
+        `;
+
+        // Hex dump panel
+        if (p.rawDataBase64) {
+            renderHexDump(p.rawDataBase64);
+        } else {
+            document.getElementById('hexDump').innerHTML = '<span style="color:var(--text-secondary)">No raw data available</span>';
+        }
+    }
+
+    // =============================================
+    // Hex Dump Renderer
+    // =============================================
+    function renderHexDump(base64Data) {
+        const bytes = atob(base64Data);
+        const lines = [];
+        const bytesPerLine = 16;
+
+        for (let offset = 0; offset < bytes.length; offset += bytesPerLine) {
+            // Offset
+            const offsetStr = offset.toString(16).padStart(8, '0');
+
+            // Hex bytes
+            let hexParts = [];
+            let asciiParts = [];
+            for (let i = 0; i < bytesPerLine; i++) {
+                if (offset + i < bytes.length) {
+                    const b = bytes.charCodeAt(offset + i);
+                    hexParts.push(b.toString(16).padStart(2, '0'));
+                    // Printable ASCII range: 0x20-0x7E
+                    asciiParts.push(b >= 0x20 && b <= 0x7e ? bytes[offset + i] : '.');
+                } else {
+                    hexParts.push('  ');
+                    asciiParts.push(' ');
+                }
+            }
+
+            // Group hex bytes in pairs of 8
+            const hexLeft = hexParts.slice(0, 8).join(' ');
+            const hexRight = hexParts.slice(8, 16).join(' ');
+            const ascii = asciiParts.join('');
+
+            lines.push(
+                `<span class="hex-offset">${offsetStr}</span>  ` +
+                `<span class="hex-byte">${hexLeft}</span>  ` +
+                `<span class="hex-byte">${hexRight}</span>  ` +
+                `|<span class="hex-ascii">${escHtml(ascii)}</span>|`
+            );
+        }
+
+        document.getElementById('hexDump').innerHTML = lines.join('\n');
+    }
+
+    // =============================================
+    // DNS Panel
+    // =============================================
+    function addDnsRow(r) {
+        document.getElementById('dnsEmpty').style.display = 'none';
+        document.getElementById('dnsTable').style.display = '';
+
+        const tbody = document.getElementById('dnsBody');
+        const tr = document.createElement('tr');
+        const typeClass = r.isResponse ? 'dns-response' : 'dns-query';
+
+        let answersHtml = '';
+        if (r.answers && r.answers.length > 0) {
+            answersHtml = r.answers.map(a => `<span class="dns-answers">${escHtml(a)}</span>`).join('<br>');
+        }
+
+        let anomalyHtml = '';
+        if (r.anomalyFlags && r.anomalyFlags.length > 0) {
+            anomalyHtml = r.anomalyFlags.map(f => `<div class="dns-anomaly">${escHtml(f)}</div>`).join('');
+        }
+
+        tr.innerHTML = `
+            <td>${escHtml(r.timestamp)}</td>
+            <td class="${typeClass}">${r.isResponse ? 'RESP' : 'QUERY'}</td>
+            <td>${escHtml(r.queryType)}</td>
+            <td title="${escHtml(r.sourceIP)}">${escHtml(r.sourceIP)}</td>
+            <td title="${escHtml(r.destIP)}">${escHtml(r.destIP)}</td>
+            <td title="${escHtml(r.queryName)}"><strong>${escHtml(r.queryName)}</strong></td>
+            <td>${escHtml(r.responseCode)}</td>
+            <td>${r.queryFrequency}</td>
+            <td>${answersHtml}${anomalyHtml}</td>
+        `;
+
+        // Highlight suspicious rows
+        if (r.anomalyFlags && r.anomalyFlags.length > 0) {
+            tr.style.background = 'rgba(255,68,68,0.05)';
+        }
+
+        tbody.insertBefore(tr, tbody.firstChild); // Newest on top
+    }
+
+    // =============================================
+    // TCP Connections Panel
+    // =============================================
+    function updateTcpRow(c) {
+        document.getElementById('tcpEmpty').style.display = 'none';
+        document.getElementById('tcpTable').style.display = '';
+
+        const tbody = document.getElementById('tcpBody');
+        let tr = document.getElementById('tcp-' + c.id);
+        if (!tr) {
+            tr = document.createElement('tr');
+            tr.id = 'tcp-' + c.id;
+            tbody.insertBefore(tr, tbody.firstChild);
+        }
+
+        const stateClass = 'tcp-' + c.state.toLowerCase();
+        const totalBytes = c.clientBytes + c.serverBytes;
+        const clientPct = totalBytes > 0 ? (c.clientBytes / totalBytes * 100) : 50;
+        const duration = c.durationSeconds < 1 ? '<1s' :
+                         c.durationSeconds < 60 ? c.durationSeconds.toFixed(1) + 's' :
+                         (c.durationSeconds / 60).toFixed(1) + 'm';
+
+        let anomalyHtml = '';
+        if (c.anomalyFlags && c.anomalyFlags.length > 0) {
+            anomalyHtml = c.anomalyFlags.map(f => `<div class="tcp-anomaly">${escHtml(f)}</div>`).join('');
+        }
+
+        tr.innerHTML = `
+            <td>${c.id}</td>
+            <td><span class="tcp-state ${stateClass}">${c.state}</span></td>
+            <td title="${c.clientIP}:${c.clientPort}">${c.clientIP}:${c.clientPort}</td>
+            <td title="${c.serverIP}:${c.serverPort}">${c.serverIP}:${c.serverPort}</td>
+            <td>${c.packetCount}</td>
+            <td>${formatBytes(c.bytesTransferred)}</td>
+            <td>
+                <div class="tcp-bytes-bar" title="Client: ${formatBytes(c.clientBytes)} / Server: ${formatBytes(c.serverBytes)}">
+                    <div class="tcp-bytes-client" style="width:${clientPct}%"></div>
+                    <div class="tcp-bytes-server" style="width:${100-clientPct}%"></div>
+                </div>
+            </td>
+            <td>${duration}</td>
+            <td>${anomalyHtml}</td>
+        `;
+
+        // Highlight anomalous connections
+        if (c.anomalyFlags && c.anomalyFlags.length > 0) {
+            tr.style.background = 'rgba(255,68,68,0.05)';
+        }
+    }
+
+    // =============================================
+    // HTTP Panel
+    // =============================================
+    function addHttpRow(e) {
+        document.getElementById('httpEmpty').style.display = 'none';
+        document.getElementById('httpTable').style.display = '';
+
+        const tbody = document.getElementById('httpBody');
+        const tr = document.createElement('tr');
+
+        let typeHtml, methodHtml, urlStatusHtml, statusHtml;
+        if (e.isRequest) {
+            typeHtml = '<span class="http-request">REQ</span>';
+            const methodClass = 'http-method-' + e.method.toLowerCase();
+            methodHtml = `<span class="${methodClass}">${escHtml(e.method)}</span>`;
+            urlStatusHtml = `<span class="http-url" title="${escHtml(e.fullUrl)}">${escHtml(e.url)}</span>`;
+            statusHtml = '';
+        } else {
+            typeHtml = '<span class="http-response">RESP</span>';
+            methodHtml = '';
+            const statusClass = e.statusCode < 300 ? 'http-status-2xx' :
+                               e.statusCode < 400 ? 'http-status-3xx' :
+                               e.statusCode < 500 ? 'http-status-4xx' : 'http-status-5xx';
+            urlStatusHtml = `<span>${escHtml(e.statusText)}</span>`;
+            statusHtml = `<span class="${statusClass}">${e.statusCode}</span>`;
+        }
+
+        let anomalyHtml = '';
+        if (e.anomalyFlags && e.anomalyFlags.length > 0) {
+            anomalyHtml = e.anomalyFlags.map(f => `<div class="http-anomaly">${escHtml(f)}</div>`).join('');
+        }
+
+        tr.innerHTML = `
+            <td>${escHtml(e.timestamp)}</td>
+            <td>${typeHtml}</td>
+            <td>${methodHtml}</td>
+            <td title="${escHtml(e.sourceIP)}:${e.sourcePort}">${escHtml(e.sourceIP)}</td>
+            <td title="${escHtml(e.destIP)}:${e.destPort}">${escHtml(e.destIP)}</td>
+            <td title="${escHtml(e.host)}"><strong>${escHtml(e.host)}</strong></td>
+            <td>${urlStatusHtml}</td>
+            <td>${statusHtml}</td>
+            <td>${anomalyHtml}</td>
+        `;
+
+        if (e.anomalyFlags && e.anomalyFlags.length > 0) {
+            tr.style.background = 'rgba(255,68,68,0.05)';
+        }
+
+        tbody.insertBefore(tr, tbody.firstChild);
+    }
+
+    // =============================================
+    // Hosts Panel
+    // =============================================
+    function updateHostRow(h) {
+        document.getElementById('hostsEmpty').style.display = 'none';
+        document.getElementById('hostsTable').style.display = '';
+
+        const tbody = document.getElementById('hostsBody');
+        let tr = document.getElementById('host-' + h.id);
+        if (!tr) {
+            tr = document.createElement('tr');
+            tr.id = 'host-' + h.id;
+            tbody.appendChild(tr);
+        }
+
+        const typeClass = h.isPrivate ? 'host-private' : 'host-public';
+        const typeLabel = h.isPrivate ? 'LAN' : 'WAN';
+
+        let osClass = 'host-os';
+        if (h.osGuess && h.osGuess.includes('Linux')) osClass += ' host-os-linux';
+        else if (h.osGuess && h.osGuess.includes('Windows')) osClass += ' host-os-windows';
+        else if (h.osGuess && h.osGuess.includes('Cisco')) osClass += ' host-os-cisco';
+
+        const portsHtml = h.openPorts.slice(0, 10).map(p =>
+            `<span class="host-port-tag">${p}</span>`
+        ).join('') + (h.openPorts.length > 10 ? `<span class="host-port-tag">+${h.openPorts.length-10}</span>` : '');
+
+        const totalBytes = h.bytesSent + h.bytesReceived;
+        const sentPct = totalBytes > 0 ? (h.bytesSent / totalBytes * 100) : 50;
+
+        const macVendor = h.vendor ? `${h.macAddress}<br><small>${escHtml(h.vendor)}</small>` :
+                          h.macAddress || '-';
+
+        let anomalyHtml = '';
+        if (h.anomalyFlags && h.anomalyFlags.length > 0) {
+            anomalyHtml = h.anomalyFlags.map(f => `<div class="host-anomaly">${escHtml(f)}</div>`).join('');
+        }
+
+        tr.innerHTML = `
+            <td><strong>${escHtml(h.ipAddress)}</strong></td>
+            <td><span class="${typeClass}">${typeLabel}</span></td>
+            <td>${macVendor}</td>
+            <td><span class="${osClass}">${escHtml(h.osGuess || '-')}</span></td>
+            <td>${h.lastTtl || '-'}</td>
+            <td><div class="host-ports">${portsHtml || '-'}</div></td>
+            <td>${h.peerCount}</td>
+            <td>${formatBytes(totalBytes)}</td>
+            <td>
+                <div class="host-traffic-bar" title="Sent: ${formatBytes(h.bytesSent)} / Recv: ${formatBytes(h.bytesReceived)}">
+                    <div class="host-traffic-sent" style="width:${sentPct}%"></div>
+                    <div class="host-traffic-recv" style="width:${100-sentPct}%"></div>
+                </div>
+                <div style="font-size:10px;color:var(--text-secondary);margin-top:2px">
+                    &#8593;${formatBytes(h.bytesSent)} &#8595;${formatBytes(h.bytesReceived)}
+                </div>
+            </td>
+            <td>${escHtml(h.firstSeen)}</td>
+            <td>${anomalyHtml}</td>
+        `;
+
+        if (h.anomalyFlags && h.anomalyFlags.length > 0) {
+            tr.style.background = 'rgba(255,68,68,0.05)';
+        }
+    }
+
+    // =============================================
+    // Credentials Panel
+    // =============================================
+    function addCredentialRow(c) {
+        document.getElementById('credEmpty').style.display = 'none';
+        document.getElementById('credTable').style.display = '';
+
+        const tbody = document.getElementById('credBody');
+        const tr = document.createElement('tr');
+        const sevClass = 'severity-' + c.severity.toLowerCase();
+        tr.innerHTML = `
+            <td>${escHtml(c.timestamp)}</td>
+            <td>${escHtml(c.protocol)}</td>
+            <td>${escHtml(c.sourceIP)}</td>
+            <td>${escHtml(c.destIP)}:${c.destPort}</td>
+            <td><strong>${escHtml(c.username)}</strong></td>
+            <td>${escHtml(c.password)}</td>
+            <td class="${sevClass}">${c.severity}</td>
+            <td title="${escHtml(c.rawData)}">${escHtml(c.rawData.substring(0, 100))}</td>
+        `;
+        tbody.appendChild(tr);
+    }
+
+    // =============================================
+    // Weaknesses Panel
+    // =============================================
+    function addWeaknessCard(w) {
+        document.getElementById('weakEmpty').style.display = 'none';
+        const container = document.getElementById('weakCards');
+        container.style.display = '';
+
+        const card = document.createElement('div');
+        card.className = 'weakness-card';
+        const sevClass = 'severity-' + w.severity.toLowerCase();
+        card.innerHTML = `
+            <div class="wk-header">
+                <strong>${escHtml(w.name)}</strong>
+                <span class="${sevClass}">${w.severity}</span>
+            </div>
+            <div class="wk-meta">${escHtml(w.category)} | ${escHtml(w.sourceIP)} &rarr; ${escHtml(w.destIP)} | Port ${w.port} | ${escHtml(w.timestamp)}</div>
+            <div class="wk-desc">${escHtml(w.description)}</div>
+            <div class="wk-exploit"><strong>Exploit Path:</strong> ${escHtml(w.exploitPath)}</div>
+            <div class="wk-mitigation"><strong>Mitigation:</strong> ${escHtml(w.mitigation)}</div>
+        `;
+        container.insertBefore(card, container.firstChild);
+    }
+
+    // =============================================
+    // L2/L3 Protocol Findings
+    // =============================================
+    const sevOrder = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3, INFO: 4 };
+    const sevColors = { CRITICAL: 'var(--red)', HIGH: 'var(--orange)', MEDIUM: 'var(--yellow)', LOW: 'var(--text-secondary)', INFO: 'var(--text-accent)' };
+
+    function addL2L3Finding(f) {
+        const container = document.getElementById('l2l3Cards');
+        const card = document.createElement('div');
+        const sev = (f.severity || 'INFO').toUpperCase();
+        card.className = 'l2l3-finding-card sev-' + sev.toLowerCase();
+        card.innerHTML = `
+            <div class="fc-header">
+                <span class="fc-proto">${escHtml(f.protocol)}</span>
+                <span class="l2l3-sev-pill l2l3-sev-${sev.toLowerCase()}">${sev}</span>
+            </div>
+            <div class="fc-title">${escHtml(f.title)}</div>
+            <div class="fc-meta">${escHtml(f.category)} | ${escHtml(f.sourceIp)} | ${escHtml(f.timestamp)}</div>
+            <div class="fc-detail">${escHtml(f.detail)}</div>
+        `;
+        // Insert sorted by severity
+        let inserted = false;
+        for (const child of container.children) {
+            const childSev = child.className.match(/sev-(\w+)/)?.[1]?.toUpperCase() || 'INFO';
+            if ((sevOrder[sev] ?? 4) < (sevOrder[childSev] ?? 4)) {
+                container.insertBefore(card, child);
+                inserted = true;
+                break;
+            }
+        }
+        if (!inserted) container.appendChild(card);
+    }
+
+    function updateL2L3Summary() {
+        const counts = {};
+        const protos = {};
+        for (const f of l2l3Findings) {
+            const sev = (f.severity || 'INFO').toUpperCase();
+            counts[sev] = (counts[sev] || 0) + 1;
+            protos[f.protocol] = (protos[f.protocol] || 0) + 1;
+        }
+        const summary = document.getElementById('l2l3Summary');
+        let html = '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">';
+        html += `<span style="font-weight:600;color:var(--text-accent)">Total: ${l2l3Findings.length}</span>`;
+        for (const sev of ['CRITICAL','HIGH','MEDIUM','LOW','INFO']) {
+            if (counts[sev]) {
+                html += `<span class="l2l3-sev-pill l2l3-sev-${sev.toLowerCase()}">${sev}: ${counts[sev]}</span>`;
+            }
+        }
+        html += '</div>';
+        html += '<div style="display:flex;gap:6px;flex-wrap:wrap">';
+        for (const [p, c] of Object.entries(protos).sort((a,b) => b[1]-a[1])) {
+            html += `<span style="font-size:11px;padding:2px 8px;background:var(--bg-tertiary);border-radius:3px">${escHtml(p)}: ${c}</span>`;
+        }
+        html += '</div>';
+        summary.innerHTML = html;
+
+        // Device discovery summary (poll hub for details)
+        loadL2L3Devices();
+    }
+
+    async function loadL2L3Devices() {
+        try {
+            const [ospf, cdp, hsrp] = await Promise.all([
+                connection.invoke('GetOspfRouters'),
+                connection.invoke('GetCdpDevices'),
+                connection.invoke('GetHsrpGroups')
+            ]);
+            const devDiv = document.getElementById('l2l3Devices');
+            let html = '';
+
+            if (ospf && ospf.length > 0) {
+                html += '<div class="l2l3-device-section"><h4>&#128268; OSPF Routers (' + ospf.length + ')</h4>';
+                html += '<table><thead><tr><th>Router ID</th><th>Area</th><th>Auth</th><th>Neighbors</th><th>Source IP</th><th>Last Seen</th></tr></thead><tbody>';
+                for (const r of ospf) {
+                    const authColor = r.authType === 'NONE' ? 'var(--red)' : r.authType === 'PLAINTEXT' ? 'var(--orange)' : 'var(--green)';
+                    html += `<tr>
+                        <td>${escHtml(r.routerId)}</td>
+                        <td>${escHtml(String(r.areaId ?? r.area ?? ''))}</td>
+                        <td style="color:${authColor};font-weight:600">${escHtml(r.authType)}</td>
+                        <td>${(r.neighbors || []).map(n => escHtml(n)).join(', ') || '-'}</td>
+                        <td>${escHtml(r.sourceIp || '')}</td>
+                        <td>${escHtml(r.lastSeen || '')}</td>
+                    </tr>`;
+                }
+                html += '</tbody></table></div>';
+            }
+
+            if (cdp && cdp.length > 0) {
+                html += '<div class="l2l3-device-section"><h4>&#128225; CDP/LLDP Devices (' + cdp.length + ')</h4>';
+                html += '<table><thead><tr><th>Device ID</th><th>Platform</th><th>IP</th><th>Port</th><th>VLAN</th><th>Capabilities</th></tr></thead><tbody>';
+                for (const d of cdp) {
+                    html += `<tr>
+                        <td>${escHtml(d.deviceId)}</td>
+                        <td>${escHtml(d.platform || '')}</td>
+                        <td>${escHtml(d.managementIp || d.ipAddress || '')}</td>
+                        <td>${escHtml(d.portId || '')}</td>
+                        <td>${d.nativeVlan ?? '-'}</td>
+                        <td>${escHtml(d.capabilities || '')}</td>
+                    </tr>`;
+                }
+                html += '</tbody></table></div>';
+            }
+
+            if (hsrp && hsrp.length > 0) {
+                html += '<div class="l2l3-device-section"><h4>&#128274; HSRP/VRRP Groups (' + hsrp.length + ')</h4>';
+                html += '<table><thead><tr><th>Group</th><th>Virtual IP</th><th>Active Router</th><th>Priority</th><th>Auth</th><th>State</th></tr></thead><tbody>';
+                for (const g of hsrp) {
+                    const authColor = (g.authType === 'NONE' || g.authentication === 'NONE') ? 'var(--red)' : 'var(--green)';
+                    html += `<tr>
+                        <td>${g.groupId ?? g.group ?? ''}</td>
+                        <td>${escHtml(g.virtualIp || '')}</td>
+                        <td>${escHtml(g.activeRouter || g.masterIp || '')}</td>
+                        <td>${g.priority ?? '-'}</td>
+                        <td style="color:${authColor};font-weight:600">${escHtml(g.authType || g.authentication || 'NONE')}</td>
+                        <td>${escHtml(g.state || '')}</td>
+                    </tr>`;
+                }
+                html += '</tbody></table></div>';
+            }
+
+            devDiv.innerHTML = html;
+        } catch (e) {
+            console.warn('Failed to load L2L3 devices:', e);
+        }
+    }
+
+    // =============================================
+    // UI Helpers
+    // =============================================
+    function updateBadge(id, count) {
+        const badge = document.getElementById(id);
+        badge.textContent = count;
+        badge.classList.toggle('show', count > 0);
+    }
+
+    function updateButtons(state) {
+        const isCapturing = state === 'Capturing';
+        const isReady = state === 'Ready';
+        document.getElementById('btnStart').disabled = !isReady;
+        document.getElementById('btnStop').disabled = !isCapturing;
+        document.getElementById('adapterSelect').disabled = isCapturing;
+    }
+
+    function formatBytes(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+        if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
+        return (bytes / 1073741824).toFixed(2) + ' GB';
+    }
+
+    function escHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str || '';
+        return div.innerHTML;
+    }
+
+    // =============================================
+    // Button Actions
+    // =============================================
+    document.getElementById('btnLoadAdapters').addEventListener('click', async () => {
+        const result = await connection.invoke('GetAdapters');
+        if (!result.success) {
+            alert('Error: ' + result.error);
+            return;
+        }
+        const sel = document.getElementById('adapterSelect');
+        sel.innerHTML = '';
+        for (const a of result.adapters) {
+            const opt = document.createElement('option');
+            opt.value = a.index;
+            opt.textContent = `[${a.index}] ${a.friendlyName} (${a.macAddress}) MTU:${a.mtu}${a.isWanAdapter ? ' [WAN]' : ''}`;
+            sel.appendChild(opt);
+        }
+        sel.disabled = false;
+        document.getElementById('btnStart').disabled = false;
+    });
+
+    document.getElementById('btnStart').addEventListener('click', async () => {
+        const adapterIndex = parseInt(document.getElementById('adapterSelect').value);
+        const filter = {
+            protocols: document.getElementById('filterProtocol').value,
+            ports: document.getElementById('filterPort').value,
+            ipAddresses: document.getElementById('filterIP').value,
+            subnet: document.getElementById('filterSubnet').value,
+            promiscuous: document.getElementById('filterPromisc').checked,
+            maxPackets: 0
+        };
+        const result = await connection.invoke('StartCapture', adapterIndex, filter);
+        if (!result.success) alert('Error: ' + result.error);
+    });
+
+    document.getElementById('btnStop').addEventListener('click', async () => {
+        const result = await connection.invoke('StopCapture');
+        if (!result.success) alert('Error: ' + result.error);
+    });
+
+    document.getElementById('btnClear').addEventListener('click', () => {
+        packets = [];
+        credentials = [];
+        weaknesses = [];
+        dnsRecords = [];
+        tcpConnections = {};
+        httpEntries = [];
+        networkHosts = {};
+        l2l3Findings = [];
+        voipFindings = [];
+        document.getElementById('packetBody').innerHTML = '';
+        document.getElementById('credBody').innerHTML = '';
+        document.getElementById('weakCards').innerHTML = '';
+        document.getElementById('weakCards').style.display = 'none';
+        document.getElementById('credTable').style.display = 'none';
+        document.getElementById('dnsTable').style.display = 'none';
+        document.getElementById('tcpTable').style.display = 'none';
+        document.getElementById('httpTable').style.display = 'none';
+        document.getElementById('hostsTable').style.display = 'none';
+        document.getElementById('dnsBody').innerHTML = '';
+        document.getElementById('tcpBody').innerHTML = '';
+        document.getElementById('httpBody').innerHTML = '';
+        document.getElementById('hostsBody').innerHTML = '';
+        document.getElementById('credEmpty').style.display = '';
+        document.getElementById('weakEmpty').style.display = '';
+        document.getElementById('dnsEmpty').style.display = '';
+        document.getElementById('tcpEmpty').style.display = '';
+        document.getElementById('httpEmpty').style.display = '';
+        document.getElementById('hostsEmpty').style.display = '';
+        document.getElementById('l2l3Empty').style.display = '';
+        document.getElementById('l2l3Content').style.display = 'none';
+        document.getElementById('l2l3Summary').innerHTML = '';
+        document.getElementById('l2l3Devices').innerHTML = '';
+        document.getElementById('l2l3Cards').innerHTML = '';
+        document.getElementById('detailContent').innerHTML = '<span style="color:var(--text-secondary)">Click a packet to view details</span>';
+        document.getElementById('hexDump').innerHTML = '<span style="color:var(--text-secondary)">Select a packet to view hex dump</span>';
+        updateBadge('credBadge', 0);
+        updateBadge('weakBadge', 0);
+        updateBadge('dnsBadge', 0);
+        updateBadge('tcpBadge', 0);
+        updateBadge('httpBadge', 0);
+        updateBadge('hostsBadge', 0);
+        updateBadge('l2l3Badge', 0);
+        updateBadge('voipBadge', 0);
+        document.getElementById('voipEmpty').style.display = '';
+        document.getElementById('voipContent').style.display = 'none';
+        document.getElementById('voipSummary').innerHTML = '';
+        document.getElementById('sipCredsBody').innerHTML = '';
+        document.getElementById('sipCallsBody').innerHTML = '';
+        document.getElementById('rtpBody').innerHTML = '';
+        document.getElementById('stunBody').innerHTML = '';
+        document.getElementById('voipFindingsCards').innerHTML = '';
+        document.getElementById('sipCredsSection').style.display = 'none';
+        document.getElementById('sipCallsSection').style.display = 'none';
+        document.getElementById('rtpSection').style.display = 'none';
+        document.getElementById('stunSection').style.display = 'none';
+        document.getElementById('filterCount').textContent = '';
+    });
+
+    document.getElementById('btnExportPcap').addEventListener('click', () => {
+        window.open('/api/export/pcap', '_blank');
+    });
+
+    document.getElementById('btnExportReport').addEventListener('click', () => {
+        window.open('/api/export/report', '_blank');
+    });
+
+    // Auto-scroll control
+    document.getElementById('tableBodyWrap').addEventListener('scroll', (e) => {
+        const wrap = e.target;
+        autoScroll = wrap.scrollHeight - wrap.scrollTop - wrap.clientHeight < 50;
+    });
+
+    // =============================================
+    // VoIP Functions
+    // =============================================
+    function addVoipFinding(f) {
+        const cards = document.getElementById('voipFindingsCards');
+        const card = document.createElement('div');
+        const sevColor = f.severity === 'CRITICAL' ? 'var(--red)' : f.severity === 'HIGH' ? 'var(--orange)' : f.severity === 'MEDIUM' ? 'var(--yellow)' : 'var(--text-secondary)';
+        card.style.cssText = 'background:var(--bg-secondary);border:1px solid var(--border);border-left:3px solid ' + sevColor + ';padding:8px 12px;margin-bottom:6px;border-radius:4px';
+        card.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center">
+                <span style="color:${sevColor};font-weight:600">[${escHtml(f.severity)}] ${escHtml(f.protocol)}</span>
+                <span style="color:var(--text-secondary);font-size:11px">${escHtml(f.timestamp)} | ${escHtml(f.sourceIp)}</span>
+            </div>
+            <div style="color:var(--text-primary);margin-top:4px;font-weight:500">${escHtml(f.title)}</div>
+            <div style="color:var(--text-secondary);font-size:11px;margin-top:2px">${escHtml(f.detail)}</div>
+        `;
+        // Insert sorted by severity
+        const order = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3, INFO: 4 };
+        const fOrder = order[f.severity] ?? 5;
+        let inserted = false;
+        for (const child of cards.children) {
+            const childSev = child.querySelector('span')?.textContent.match(/\[(\w+)\]/)?.[1] || 'INFO';
+            if ((order[childSev] ?? 5) > fOrder) {
+                cards.insertBefore(card, child);
+                inserted = true;
+                break;
+            }
+        }
+        if (!inserted) cards.appendChild(card);
+
+        // Also load structured data if this is a credential/call/stream finding
+        loadVoipData();
+    }
+
+    async function loadVoipData() {
+        try {
+            const [creds, calls, streams, stun, summary] = await Promise.all([
+                connection.invoke('GetSipCredentials'),
+                connection.invoke('GetSipCalls'),
+                connection.invoke('GetRtpStreams'),
+                connection.invoke('GetStunBindings'),
+                connection.invoke('GetVoipSummary')
+            ]);
+
+            // Summary
+            const sumDiv = document.getElementById('voipSummary');
+            sumDiv.innerHTML = `
+                <span style="color:var(--red)">SIP Creds: <strong>${summary.totalCredentials || 0}</strong></span>
+                <span style="color:var(--text-accent)">Calls: <strong>${summary.totalCalls || 0}</strong></span>
+                <span style="color:var(--green)">RTP Streams: <strong>${summary.totalRtpStreams || 0}</strong></span>
+                <span style="color:var(--yellow)">STUN Bindings: <strong>${summary.totalStunBindings || 0}</strong></span>
+                <span style="color:var(--text-secondary)">Cleartext: <strong>${summary.cleartextStreams || 0}</strong></span>
+            `;
+
+            const statVoipEl = document.getElementById('statVoip');
+            statVoipEl.textContent = (summary.totalCredentials || 0) + (summary.totalCalls || 0) + (summary.totalRtpStreams || 0);
+            statVoipEl.classList.toggle('stat-alert', (summary.totalCredentials || 0) > 0);
+
+            // SIP Credentials
+            if (creds && creds.length > 0) {
+                document.getElementById('sipCredsSection').style.display = '';
+                const tbody = document.getElementById('sipCredsBody');
+                tbody.innerHTML = '';
+                for (const c of creds) {
+                    const tr = document.createElement('tr');
+                    const hc = c.hashcatFormat ? (c.hashcatFormat.length > 40 ? c.hashcatFormat.substring(0, 37) + '...' : c.hashcatFormat) : '-';
+                    tr.innerHTML = `
+                        <td>${escHtml(c.timestamp?.toString().substring(11,19) || '')}</td>
+                        <td>${escHtml(c.sourceIp)}</td>
+                        <td>${escHtml(c.destIp)}</td>
+                        <td style="color:var(--green);font-weight:600">${escHtml(c.username)}</td>
+                        <td>${escHtml(c.realm)}</td>
+                        <td>${escHtml(c.algorithm)}</td>
+                        <td title="${escHtml(c.hashcatFormat || '')}" style="color:var(--red);font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(hc)}</td>
+                    `;
+                    tbody.appendChild(tr);
+                }
+            }
+
+            // SIP Calls
+            if (calls && calls.length > 0) {
+                document.getElementById('sipCallsSection').style.display = '';
+                const tbody = document.getElementById('sipCallsBody');
+                tbody.innerHTML = '';
+                for (const c of calls) {
+                    const tr = document.createElement('tr');
+                    const stateColor = c.state === 'Active' ? 'var(--green)' : c.state === 'Ringing' ? 'var(--yellow)' : 'var(--text-secondary)';
+                    tr.innerHTML = `
+                        <td style="color:${stateColor}">${escHtml(c.state)}</td>
+                        <td>${escHtml(c.caller)}</td>
+                        <td>${escHtml(c.callee)}</td>
+                        <td>${c.durationSeconds ? c.durationSeconds.toFixed(0) + 's' : '-'}</td>
+                        <td style="font-size:11px">${escHtml(c.userAgent || '')}</td>
+                        <td>${escHtml(c.sourceIp)}</td>
+                    `;
+                    tbody.appendChild(tr);
+                }
+            }
+
+            // RTP Streams
+            if (streams && streams.length > 0) {
+                document.getElementById('rtpSection').style.display = '';
+                const tbody = document.getElementById('rtpBody');
+                tbody.innerHTML = '';
+                for (const s of streams) {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${escHtml(s.sourceIp)}:${s.sourcePort}</td>
+                        <td>${escHtml(s.destIp)}:${s.destPort}</td>
+                        <td style="color:var(--text-accent)">${escHtml(s.codec)}</td>
+                        <td>${s.packetCount}</td>
+                        <td style="color:${s.isCleartext ? 'var(--red)' : 'var(--green)'};font-weight:600">${s.isCleartext ? 'YES' : 'NO'}</td>
+                    `;
+                    if (s.isCleartext) tr.style.background = 'rgba(255,0,0,0.1)';
+                    tbody.appendChild(tr);
+                }
+            }
+
+            // STUN Bindings
+            if (stun && stun.length > 0) {
+                document.getElementById('stunSection').style.display = '';
+                const tbody = document.getElementById('stunBody');
+                tbody.innerHTML = '';
+                for (const b of stun) {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${escHtml(b.sourceIp)}:${b.sourcePort}</td>
+                        <td>${escHtml(b.destIp)}:${b.destPort}</td>
+                        <td>${escHtml(b.method)}</td>
+                        <td style="color:var(--yellow)">${b.mappedAddress ? escHtml(b.mappedAddress) : '-'}</td>
+                    `;
+                    tbody.appendChild(tr);
+                }
+            }
+        } catch (e) {
+            console.warn('Failed to load VoIP data:', e);
+        }
+    }
+
+    // =============================================
+    // ARP Spoof Functions
+    // =============================================
+    let arpStatusInterval = null;
+
+    // Pre-check: capture phai dang chay
+    function arpCheckCaptureState() {
+        const stateEl = document.getElementById('statState');
+        const isCapturing = stateEl && stateEl.textContent === 'Capturing';
+        const preCheck = document.getElementById('arpPreCheck');
+        if (preCheck) preCheck.style.display = isCapturing ? 'none' : 'block';
+        return isCapturing;
+    }
+
+    function arpUpdateUI(state) {
+        const startBtn = document.getElementById('arpStartBtn');
+        const stopBtn = document.getElementById('arpStopBtn');
+        const statusText = document.getElementById('arpStatusText');
+        const liveIndicator = document.getElementById('arpLiveIndicator');
+
+        if (state === 'Running') {
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+            statusText.textContent = 'Running';
+            statusText.style.color = 'var(--red)';
+            liveIndicator.style.display = 'inline-block';
+            if (!arpStatusInterval) {
+                arpStatusInterval = setInterval(arpPollStatus, 2000);
+            }
+        } else if (state === 'Restoring') {
+            statusText.textContent = 'Restoring ARP tables...';
+            statusText.style.color = 'var(--yellow)';
+        } else {
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            statusText.textContent = 'Idle';
+            statusText.style.color = 'var(--text-secondary)';
+            liveIndicator.style.display = 'none';
+            if (arpStatusInterval) {
+                clearInterval(arpStatusInterval);
+                arpStatusInterval = null;
+            }
+        }
+    }
+
+    async function arpPollStatus() {
+        try {
+            const status = await connection.invoke('GetArpSpoofStatus');
+            document.getElementById('arpPktCount').textContent = status.packetsSent || 0;
+            if (status.targets) refreshArpTargets({ targets: status.targets });
+            if (status.state && status.state !== 'Running') {
+                arpUpdateUI(status.state);
+            }
+        } catch(e) { /* silent */ }
+    }
+
+    async function arpAutoDetect() {
+        if (!arpCheckCaptureState()) {
+            document.getElementById('arpGwStatus').textContent = 'Start capture truoc khi dung ARP Spoofing';
+            document.getElementById('arpGwStatus').style.color = 'var(--red)';
+            return;
+        }
+        document.getElementById('arpGwStatus').textContent = 'Detecting gateway...';
+        document.getElementById('arpGwStatus').style.color = 'var(--text-secondary)';
+        try {
+            const result = await connection.invoke('ArpSpoofAutoDetect');
+            if (result.success) {
+                document.getElementById('arpGwIp').value = result.ip || '';
+                document.getElementById('arpGwMac').value = result.mac || '';
+                if (result.mac) {
+                    document.getElementById('arpGwStatus').innerHTML =
+                        `<span style="color:var(--green)">&#10004; Gateway: ${escHtml(result.ip)} (${escHtml(result.mac)})</span>`;
+                    // Auto-configure
+                    arpConfigure();
+                } else {
+                    document.getElementById('arpGwStatus').innerHTML =
+                        `<span style="color:var(--yellow)">&#9888; Gateway ${escHtml(result.ip)} — MAC chua co trong ARP cache, ping gateway roi thu lai</span>`;
+                }
+            } else {
+                document.getElementById('arpGwStatus').innerHTML =
+                    `<span style="color:var(--red)">&#10006; ${escHtml(result.error)}</span>`;
+            }
+        } catch (e) {
+            document.getElementById('arpGwStatus').innerHTML =
+                `<span style="color:var(--red)">Error: ${escHtml(e.message)}</span>`;
+        }
+    }
+
+    async function arpConfigure() {
+        const ip = document.getElementById('arpGwIp').value.trim();
+        const mac = document.getElementById('arpGwMac').value.trim();
+        const interval = parseInt(document.getElementById('arpInterval').value) || 2000;
+        if (!ip || !mac) {
+            document.getElementById('arpGwStatus').innerHTML =
+                '<span style="color:var(--red)">Gateway IP va MAC bat buoc</span>';
+            return;
+        }
+        try {
+            const result = await connection.invoke('ArpSpoofConfigure', ip, mac, interval);
+            if (result.success) {
+                document.getElementById('arpGwStatus').innerHTML =
+                    `<span style="color:var(--green)">&#10004; Configured: ${escHtml(ip)} (${escHtml(mac)}), interval ${interval}ms</span>`;
+            } else {
+                document.getElementById('arpGwStatus').innerHTML =
+                    `<span style="color:var(--red)">${escHtml(result.error)}</span>`;
+            }
+        } catch (e) {
+            document.getElementById('arpGwStatus').innerHTML =
+                `<span style="color:var(--red)">Error: ${escHtml(e.message)}</span>`;
+        }
+    }
+
+    async function arpResolveMac() {
+        const ip = document.getElementById('arpTargetIp').value.trim();
+        if (!ip) { alert('Nhap Target IP truoc'); return; }
+        try {
+            const result = await connection.invoke('ArpResolveMac', ip);
+            if (result.success) {
+                document.getElementById('arpTargetMac').value = result.mac;
+                document.getElementById('arpTargetMac').style.borderColor = 'var(--green)';
+                setTimeout(() => document.getElementById('arpTargetMac').style.borderColor = '', 2000);
+            } else {
+                alert(result.error);
+            }
+        } catch (e) {
+            alert('Error: ' + e.message);
+        }
+    }
+
+    async function arpAddTarget() {
+        const ip = document.getElementById('arpTargetIp').value.trim();
+        let mac = document.getElementById('arpTargetMac').value.trim();
+        if (!ip) { alert('Target IP bat buoc'); return; }
+        // Auto-resolve MAC neu chua co
+        if (!mac) {
+            try {
+                const resolve = await connection.invoke('ArpResolveMac', ip);
+                if (resolve.success) {
+                    mac = resolve.mac;
+                    document.getElementById('arpTargetMac').value = mac;
+                } else {
+                    alert('Khong the resolve MAC cho ' + ip + '. ' + resolve.error);
+                    return;
+                }
+            } catch (e) {
+                alert('Error resolving MAC: ' + e.message);
+                return;
+            }
+        }
+        try {
+            const result = await connection.invoke('ArpSpoofAddTarget', ip, mac);
+            if (result.success) {
+                document.getElementById('arpTargetIp').value = '';
+                document.getElementById('arpTargetMac').value = '';
+                refreshArpTargets(result.status);
+            } else {
+                alert(result.error);
+            }
+        } catch (e) {
+            alert('Error: ' + e.message);
+        }
+    }
+
+    async function arpRemoveTarget(ip) {
+        try {
+            const result = await connection.invoke('ArpSpoofRemoveTarget', ip);
+            if (result.success) refreshArpTargets(result.status);
+        } catch (e) {
+            alert('Error: ' + e.message);
+        }
+    }
+
+    async function arpStart() {
+        if (!arpCheckCaptureState()) {
+            alert('Phai start capture truoc khi ARP Spoofing');
+            return;
+        }
+        try {
+            const result = await connection.invoke('ArpSpoofStart');
+            if (!result.success) {
+                alert(result.error);
+                return;
+            }
+            arpUpdateUI('Running');
+            if (result.status) {
+                document.getElementById('arpPktCount').textContent = result.status.packetsSent || 0;
+            }
+        } catch (e) {
+            alert('Error: ' + e.message);
+        }
+    }
+
+    async function arpStop() {
+        try {
+            arpUpdateUI('Restoring');
+            const result = await connection.invoke('ArpSpoofStop');
+            if (!result.success) {
+                alert(result.error);
+                return;
+            }
+            arpUpdateUI('Idle');
+            document.getElementById('arpStatusText').textContent = 'Idle (ARP tables restored)';
+            document.getElementById('arpStatusText').style.color = 'var(--green)';
+        } catch (e) {
+            alert('Error: ' + e.message);
+        }
+    }
+
+    async function arpLoadCandidates() {
+        const panel = document.getElementById('arpCandidatePanel');
+        const list = document.getElementById('arpCandidateList');
+        panel.style.display = 'block';
+        list.innerHTML = '<div style="color:var(--text-secondary)">Loading discovered hosts...</div>';
+        try {
+            const result = await connection.invoke('GetArpSpoofCandidates');
+            if (!result.success || !result.hosts || result.hosts.length === 0) {
+                list.innerHTML = '<div style="color:var(--text-secondary)">Chua discover host nao. Start capture va doi traffic de phat hien host tren mang.</div>';
+                return;
+            }
+            let html = '<table style="width:100%;font-size:11px"><thead><tr><th>IP</th><th>MAC</th><th>Vendor</th><th>Last</th><th></th></tr></thead><tbody>';
+            for (const h of result.hosts) {
+                html += `<tr>
+                    <td>${escHtml(h.ip)}</td>
+                    <td style="font-size:10px">${escHtml(h.mac)}</td>
+                    <td>${escHtml(h.vendor || '-')}</td>
+                    <td>${escHtml(h.lastSeen)}</td>
+                    <td><button class="btn-action" onclick="arpPickCandidate('${escHtml(h.ip)}','${escHtml(h.mac)}')" style="padding:1px 6px;font-size:10px">&#10010; Add</button></td>
+                </tr>`;
+            }
+            html += '</tbody></table>';
+            list.innerHTML = html;
+        } catch (e) {
+            list.innerHTML = `<div style="color:var(--red)">Error: ${escHtml(e.message)}</div>`;
+        }
+    }
+
+    async function arpPickCandidate(ip, mac) {
+        try {
+            const result = await connection.invoke('ArpSpoofAddTarget', ip, mac);
+            if (result.success) {
+                refreshArpTargets(result.status);
+            } else {
+                alert(result.error);
+            }
+        } catch (e) {
+            alert('Error: ' + e.message);
+        }
+    }
+
+    function refreshArpTargets(status) {
+        const div = document.getElementById('arpTargetList');
+        if (!status || !status.targets || status.targets.length === 0) {
+            div.innerHTML = '<div style="color:var(--text-secondary);font-size:11px">No targets added</div>';
+            return;
+        }
+        let html = '<table style="width:100%;font-size:12px"><thead><tr><th>IP</th><th>MAC</th><th>Last Poisoned</th><th></th></tr></thead><tbody>';
+        for (const t of status.targets) {
+            const last = t.lastPoisoned && t.lastPoisoned !== '0001-01-01T00:00:00'
+                ? new Date(t.lastPoisoned).toLocaleTimeString()
+                : '<span style="color:var(--text-secondary)">-</span>';
+            html += `<tr>
+                <td>${escHtml(t.ip)}</td>
+                <td style="font-size:11px">${escHtml(t.mac)}</td>
+                <td>${last}</td>
+                <td><button class="btn-action" onclick="arpRemoveTarget('${escHtml(t.ip)}')" style="padding:1px 6px;font-size:10px">&#10006;</button></td>
+            </tr>`;
+        }
+        html += '</tbody></table>';
+        div.innerHTML = html;
+    }
+
+    // =============================================
+    // VLAN Hopping Functions
+    // =============================================
+    let vlanPollTimer = null;
+
+    function vlanCheckCaptureState() {
+        const stateEl = document.getElementById('statState');
+        const isCapturing = stateEl && stateEl.textContent === 'Capturing';
+        const warn = document.getElementById('vlanPreCheck');
+        if (warn) warn.style.display = isCapturing ? 'none' : 'block';
+    }
+
+    function vlanLog(msg) {
+        const area = document.getElementById('vlanLogArea');
+        if (!area) return;
+        const time = new Date().toLocaleTimeString();
+        const line = document.createElement('div');
+        line.innerHTML = `<span style="color:var(--text-accent)">[${time}]</span> ${escHtml(msg)}`;
+        area.prepend(line);
+        // Giu toi da 200 lines
+        while (area.children.length > 200) area.removeChild(area.lastChild);
+    }
+
+    function vlanUpdateUI(status) {
+        if (!status) return;
+        const stateEl = document.getElementById('vlanStateText');
+        const methodEl = document.getElementById('vlanMethodText');
+        const dtpEl = document.getElementById('vlanDtpText');
+        const dtpSentEl = document.getElementById('vlanDtpSent');
+        const dblTagSentEl = document.getElementById('vlanDblTagSent');
+        const startBtn = document.getElementById('vlanStartBtn');
+        const stopBtn = document.getElementById('vlanStopBtn');
+        const indicator = document.getElementById('vlanLiveIndicator');
+
+        if (stateEl) {
+            stateEl.textContent = status.state || 'Idle';
+            const colors = { 'Idle': 'var(--text-secondary)', 'Probing': 'var(--yellow)', 'Active': 'var(--green)', 'Error': 'var(--red)' };
+            stateEl.style.color = colors[status.state] || 'var(--text-secondary)';
+        }
+        if (methodEl) {
+            methodEl.textContent = status.activeMethod || 'None';
+            methodEl.style.color = status.activeMethod === 'DtpSpoofing' ? 'var(--green)' :
+                                   status.activeMethod === 'DoubleTagging' ? 'var(--yellow)' : 'var(--text-secondary)';
+        }
+        if (dtpEl) {
+            dtpEl.textContent = status.dtpDetected ? 'Detected ✓' : 'Not detected';
+            dtpEl.style.color = status.dtpDetected ? 'var(--green)' : 'var(--text-secondary)';
+        }
+        if (dtpSentEl) dtpSentEl.textContent = status.dtpFramesSent || 0;
+        if (dblTagSentEl) dblTagSentEl.textContent = status.doubleTagFramesSent || 0;
+
+        const isActive = status.state === 'Probing' || status.state === 'Active';
+        if (startBtn) startBtn.disabled = isActive;
+        if (stopBtn) stopBtn.disabled = !isActive;
+        if (indicator) {
+            indicator.style.display = isActive ? 'inline-block' : 'none';
+            indicator.style.background = status.state === 'Active' ? 'rgba(68,255,68,0.15)' : 'rgba(255,187,51,0.15)';
+            indicator.style.color = status.state === 'Active' ? 'var(--green)' : 'var(--yellow)';
+        }
+
+        // Highlight workflow diagram steps
+        const wfStep1 = document.getElementById('wfStep1');
+        const wfStep2a = document.getElementById('wfStep2a');
+        const wfStep2b = document.getElementById('wfStep2b');
+        if (wfStep1) wfStep1.style.borderLeftColor = status.state === 'Probing' ? 'var(--yellow)' : (isActive ? 'var(--green)' : 'var(--text-secondary)');
+        if (wfStep2a) wfStep2a.style.borderLeftColor = status.activeMethod === 'DtpSpoofing' ? 'var(--green)' : 'var(--text-secondary)';
+        if (wfStep2b) wfStep2b.style.borderLeftColor = status.activeMethod === 'DoubleTagging' ? 'var(--yellow)' : 'var(--text-secondary)';
+    }
+
+    async function vlanPollStatus() {
+        try {
+            const result = await connection.invoke('GetVlanHopStatus');
+            if (result.success !== false) vlanUpdateUI(result);
+        } catch (e) { /* ignore polling errors */ }
+    }
+
+    async function vlanAutoDetect() {
+        const statusDiv = document.getElementById('vlanDetectStatus');
+        statusDiv.innerHTML = '<span style="color:var(--yellow)">&#9203; Scanning CDP/LLDP/DTP data...</span>';
+        try {
+            const result = await connection.invoke('VlanHopAutoDetect');
+            if (result.dtpDetected) {
+                statusDiv.innerHTML = `<span style="color:var(--green)">&#10004; DTP detected!</span>`;
+                if (result.nativeVlan && result.nativeVlan > 0) {
+                    document.getElementById('vlanNativeVlan').value = result.nativeVlan;
+                    statusDiv.innerHTML += ` Native VLAN: <strong style="color:var(--text-accent)">${result.nativeVlan}</strong>`;
+                }
+                vlanLog('Auto Detect: DTP detected, native VLAN = ' + (result.nativeVlan || 'unknown'));
+            } else if (result.nativeVlan && result.nativeVlan > 0) {
+                document.getElementById('vlanNativeVlan').value = result.nativeVlan;
+                statusDiv.innerHTML = `<span style="color:var(--yellow)">DTP không phát hiện.</span> CDP Native VLAN: <strong style="color:var(--text-accent)">${result.nativeVlan}</strong>`;
+                vlanLog('Auto Detect: no DTP, CDP native VLAN = ' + result.nativeVlan);
+            } else {
+                statusDiv.innerHTML = `<span style="color:var(--text-secondary)">Không phát hiện DTP hoặc CDP/LLDP. Cần capture thêm traffic hoặc config thủ công.</span>`;
+                vlanLog('Auto Detect: nothing found — capture more traffic or configure manually');
+            }
+        } catch (e) {
+            statusDiv.innerHTML = `<span style="color:var(--red)">Error: ${escHtml(e.message)}</span>`;
+        }
+    }
+
+    async function vlanConfigure() {
+        const targetVlan = parseInt(document.getElementById('vlanTargetVlan').value);
+        const nativeVlan = parseInt(document.getElementById('vlanNativeVlan').value) || 1;
+        const dtpTimeout = parseInt(document.getElementById('vlanDtpTimeout').value) || 30;
+        const statusDiv = document.getElementById('vlanConfigStatus');
+
+        if (!targetVlan || targetVlan < 1 || targetVlan > 4094) {
+            statusDiv.innerHTML = '<span style="color:var(--red)">Target VLAN phải từ 1-4094</span>';
+            return;
+        }
+        try {
+            const result = await connection.invoke('VlanHopConfigure', targetVlan, nativeVlan, dtpTimeout);
+            if (result.success) {
+                statusDiv.innerHTML = `<span style="color:var(--green)">&#10004; Configured: VLAN ${targetVlan}, Native ${nativeVlan}, DTP timeout ${dtpTimeout}s</span>`;
+                vlanLog(`Configured: target=${targetVlan} native=${nativeVlan} timeout=${dtpTimeout}s`);
+                vlanUpdateUI(result.status);
+            } else {
+                statusDiv.innerHTML = `<span style="color:var(--red)">&#10008; ${escHtml(result.error)}</span>`;
+            }
+        } catch (e) {
+            statusDiv.innerHTML = `<span style="color:var(--red)">Error: ${escHtml(e.message)}</span>`;
+        }
+    }
+
+    async function vlanStart() {
+        vlanCheckCaptureState();
+        try {
+            const result = await connection.invoke('VlanHopStart');
+            if (result.success) {
+                vlanLog('VLAN Hopping started — DTP probe phase');
+                vlanUpdateUI(result.status);
+                // Start polling
+                if (vlanPollTimer) clearInterval(vlanPollTimer);
+                vlanPollTimer = setInterval(vlanPollStatus, 2000);
+            } else {
+                alert('Start failed: ' + (result.error || 'unknown'));
+                vlanLog('Start failed: ' + (result.error || 'unknown'));
+            }
+        } catch (e) {
+            alert('Error: ' + e.message);
+        }
+    }
+
+    async function vlanStop() {
+        try {
+            const result = await connection.invoke('VlanHopStop');
+            if (result.success) {
+                vlanLog('VLAN Hopping stopped');
+                vlanUpdateUI(result.status);
+                if (vlanPollTimer) { clearInterval(vlanPollTimer); vlanPollTimer = null; }
+            } else {
+                alert('Stop failed: ' + (result.error || 'unknown'));
+            }
+        } catch (e) {
+            alert('Error: ' + e.message);
+        }
+    }
+
+    async function vlanArpRequest() {
+        const ip = document.getElementById('vlanArpTargetIp').value.trim();
+        const statusDiv = document.getElementById('vlanArpStatus');
+        if (!ip) { statusDiv.innerHTML = '<span style="color:var(--red)">Nhập IP target</span>'; return; }
+        try {
+            const result = await connection.invoke('VlanHopArpRequest', ip);
+            if (result.success) {
+                statusDiv.innerHTML = `<span style="color:var(--green)">&#10004; Double-tagged ARP sent → ${escHtml(ip)}</span>`;
+                vlanLog('Double-tagged ARP probe sent to ' + ip);
+            } else {
+                statusDiv.innerHTML = `<span style="color:var(--red)">&#10008; ${escHtml(result.error)}</span>`;
+            }
+        } catch (e) {
+            statusDiv.innerHTML = `<span style="color:var(--red)">Error: ${escHtml(e.message)}</span>`;
+        }
+    }
+
+    // Start
+    startConnection();
+    </script>
+</body>
+</html>
