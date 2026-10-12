@@ -119,10 +119,6 @@ This tool is built for **authorized security testing only**.
 - Comply with local laws and your organization's security policies
 - Never use on production networks without stakeholder consent
 
-## License
-
-[MIT License](LICENSE) — free to use, modify, and distribute.
-
 ## Author
 
 **Johto Robbie** — Security Researcher
