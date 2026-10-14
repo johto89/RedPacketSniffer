@@ -17,6 +17,9 @@ public sealed class CaptureFilter
     /// <summary>Chỉ capture packet liên quan đến IP này</summary>
     public HashSet<string>? IpAddresses { get; set; }
 
+    /// <summary>Loại trừ packet có IP này ở src hoặc dst (vd: IP máy mình). Ưu tiên hơn IpAddresses.</summary>
+    public HashSet<string>? ExcludedIpAddresses { get; set; }
+
     /// <summary>Subnet filter dạng CIDR, vd: "192.168.1.0/24"</summary>
     public string? Subnet { get; set; }
 
@@ -57,6 +60,10 @@ public sealed class CaptureFilter
                     "ICMP" => packet.IpProtocol == 1,
                     "IGMP" => packet.IpProtocol == 2,
                     "GRE" => packet.IpProtocol == 47,
+                    "ESP" => packet.IpProtocol == 50,
+                    "AH" => packet.IpProtocol == 51,
+                    "IKE" => packet.ApplicationProtocol == "IKE" || packet.ApplicationProtocol == "NAT-T",
+                    "NAT-T" => packet.ApplicationProtocol == "NAT-T",
                     "EIGRP" => packet.IpProtocol == 88,
                     "OSPF" => packet.IpProtocol == 89,
                     "VRRP" => packet.IpProtocol == 112,
@@ -79,12 +86,21 @@ public sealed class CaptureFilter
                 return false;
         }
 
-        // IP filter
+        // IP filter (include)
         if (IpAddresses is { Count: > 0 })
         {
             if (packet.SourceIP == null && packet.DestIP == null)
                 return false;
             if (!IpAddresses.Contains(packet.SourceIP ?? "") && !IpAddresses.Contains(packet.DestIP ?? ""))
+                return false;
+        }
+
+        // IP exclude filter — ưu tiên hơn include (dùng để ẩn IP máy mình)
+        if (ExcludedIpAddresses is { Count: > 0 })
+        {
+            if (packet.SourceIP != null && ExcludedIpAddresses.Contains(packet.SourceIP))
+                return false;
+            if (packet.DestIP != null && ExcludedIpAddresses.Contains(packet.DestIP))
                 return false;
         }
 

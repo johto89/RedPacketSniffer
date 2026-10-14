@@ -491,6 +491,8 @@
         <input type="text" id="filterPort" placeholder="80,443" style="width:80px">
         <label>IP:</label>
         <input type="text" id="filterIP" placeholder="192.168.1.1" style="width:110px">
+        <label>Exclude IP:</label>
+        <input type="text" id="filterExcludeIP" placeholder="192.168.0.104" title="Exclude your own machine IP from capture" style="width:110px">
         <label>Subnet:</label>
         <input type="text" id="filterSubnet" placeholder="10.0.0.0/24" style="width:100px">
 
@@ -531,7 +533,7 @@
     <!-- DISPLAY FILTER -->
     <div class="filter-bar">
         <span class="filter-label">Display Filter:</span>
-        <input type="text" id="displayFilter" placeholder="ip.src==192.168.1.1 || proto==TCP || port==443 || dns || keyword...">
+        <input type="text" id="displayFilter" placeholder="ip.src==192.168.1.1 || proto==TCP || port==443 || !192.168.0.104 || ip!=192.168.0.104...">
         <span class="filter-count" id="filterCount"></span>
     </div>
 
@@ -816,8 +818,8 @@
         <div class="analysis-panel" style="padding:16px;overflow:auto">
             <!-- Warning banner + Pre-check -->
             <div id="arpPreCheck" style="background:rgba(255,80,80,0.1);border:1px solid var(--red);border-radius:6px;padding:10px 14px;margin-bottom:12px;display:none">
-                <span style="color:var(--red);font-weight:bold">&#9888; Capture chưa chạy!</span>
-                <span style="color:var(--text-secondary);font-size:12px;margin-left:8px">Phải start capture trên adapter trước khi dùng ARP Spoofing.</span>
+                <span style="color:var(--red);font-weight:bold">&#9888; Capture not running!</span>
+                <span style="color:var(--text-secondary);font-size:12px;margin-left:8px">Start capture on an adapter before using ARP Spoofing.</span>
             </div>
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
                 <h3 style="color:var(--red);margin:0">&#9888; ARP Spoofing — MITM</h3>
@@ -825,7 +827,7 @@
                     &#9679; ACTIVE
                 </div>
                 <span style="margin-left:auto;color:var(--text-secondary);font-size:12px">
-                    <strong style="color:var(--yellow)">Chỉ dùng trong authorized red team engagement</strong>
+                    <strong style="color:var(--yellow)">Use only in authorized red team engagements</strong>
                 </span>
             </div>
 
@@ -902,8 +904,8 @@
         <div class="analysis-panel" style="padding:16px;overflow:auto">
             <!-- Warning banner -->
             <div id="vlanPreCheck" style="background:rgba(255,80,80,0.1);border:1px solid var(--red);border-radius:6px;padding:10px 14px;margin-bottom:12px;display:none">
-                <span style="color:var(--red);font-weight:bold">&#9888; Capture chưa chạy!</span>
-                <span style="color:var(--text-secondary);font-size:12px;margin-left:8px">Phải start capture trên adapter trước khi dùng VLAN Hopping.</span>
+                <span style="color:var(--red);font-weight:bold">&#9888; Capture not running!</span>
+                <span style="color:var(--text-secondary);font-size:12px;margin-left:8px">Start capture on an adapter before using VLAN Hopping.</span>
             </div>
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
                 <h3 style="color:var(--purple);margin:0">&#128268; VLAN Hopping</h3>
@@ -911,7 +913,7 @@
                     &#9679; ACTIVE
                 </div>
                 <span style="margin-left:auto;color:var(--text-secondary);font-size:12px">
-                    <strong style="color:var(--yellow)">Chỉ dùng trong authorized red team engagement</strong>
+                    <strong style="color:var(--yellow)">Use only in authorized red team engagements</strong>
                 </span>
             </div>
 
@@ -924,7 +926,7 @@
                             <h4 style="margin:0">&#128270; Auto Detect</h4>
                             <button class="btn-action" onclick="vlanAutoDetect()" style="margin-left:auto;font-size:11px">&#128270; Scan Network</button>
                         </div>
-                        <div id="vlanDetectStatus" style="font-size:11px;color:var(--text-secondary)">Click Scan Network để tự động phát hiện Native VLAN và DTP từ CDP/LLDP</div>
+                        <div id="vlanDetectStatus" style="font-size:11px;color:var(--text-secondary)">Click Scan Network to auto-detect Native VLAN and DTP from CDP/LLDP</div>
                     </div>
 
                     <!-- Config -->
@@ -963,13 +965,13 @@
                     <div style="background:var(--bg-secondary);padding:12px;border-radius:6px;border:1px solid var(--border)">
                         <h4 style="margin:0 0 8px 0">&#128232; Double Tag ARP Probe</h4>
                         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-                            <input type="text" id="vlanArpTargetIp" placeholder="Target IP trong target VLAN" style="width:200px">
+                            <input type="text" id="vlanArpTargetIp" placeholder="Target IP in target VLAN" style="width:200px">
                             <button class="btn-action" onclick="vlanArpRequest()" style="font-size:11px">&#128232; Send ARP Request</button>
                         </div>
                         <div id="vlanArpStatus" style="font-size:11px;color:var(--text-secondary);margin-top:4px"></div>
                         <div style="color:var(--text-secondary);font-size:11px;margin-top:6px">
-                            ⚠ Double Tagging là <strong style="color:var(--yellow)">ONE-WAY ONLY</strong> — response không quay lại attacker.<br>
-                            Tip: Dùng kết hợp trunk port (DTP) hoặc traffic mirroring để capture response.
+                            ⚠ Double Tagging is <strong style="color:var(--yellow)">ONE-WAY ONLY</strong> — responses never come back to the attacker.<br>
+                            Tip: Combine with a trunk port (DTP) or traffic mirroring to capture responses.
                         </div>
                     </div>
                 </div>
@@ -980,22 +982,22 @@
                         <h4 style="margin:0 0 8px 0">&#128640; Workflow</h4>
                         <div style="font-size:12px;line-height:1.8">
                             <div id="wfStep1" style="padding:6px 10px;border-radius:4px;margin-bottom:4px;border-left:3px solid var(--text-secondary)">
-                                <strong>1. DTP Probe</strong> — Lắng nghe + gửi DTP Desirable frame
+                                <strong>1. DTP Probe</strong> — Listen + send DTP Desirable frames
                             </div>
                             <div style="text-align:center;color:var(--text-secondary);font-size:10px">↓ Switch respond? ↓</div>
                             <div style="display:flex;gap:8px;margin-top:4px">
                                 <div id="wfStep2a" style="flex:1;padding:6px 10px;border-radius:4px;border-left:3px solid var(--text-secondary)">
                                     <strong style="color:var(--green)">✓ DTP Spoofing</strong><br>
-                                    <span style="font-size:11px">Negotiate trunk → nhận ALL VLANs</span>
+                                    <span style="font-size:11px">Negotiate trunk → receive ALL VLANs</span>
                                 </div>
                                 <div id="wfStep2b" style="flex:1;padding:6px 10px;border-radius:4px;border-left:3px solid var(--text-secondary)">
                                     <strong style="color:var(--yellow)">✗ Double Tagging</strong><br>
-                                    <span style="font-size:11px">One-way vào target VLAN</span>
+                                    <span style="font-size:11px">One-way into target VLAN</span>
                                 </div>
                             </div>
                             <div style="text-align:center;color:var(--text-secondary);font-size:10px;margin-top:4px">↓</div>
                             <div style="padding:6px 10px;border-radius:4px;margin-top:4px;border-left:3px solid var(--text-secondary)">
-                                <strong>3. ARP Spoofing</strong> — MITM trong target VLAN
+                                <strong>3. ARP Spoofing</strong> — MITM inside target VLAN
                             </div>
                         </div>
                     </div>
@@ -1121,7 +1123,7 @@
 
     function matchFilter(text, dataset, filter) {
         // Support simple expressions: ip.src==X, ip.dst==X, proto==X, port==X, or free text
-        // Support || (OR) and && (AND)
+        // Support || (OR) and && (AND), ! / != for exclusion (vd: !192.168.0.104, ip!=192.168.0.104)
         if (filter.includes('||')) {
             return filter.split('||').some(part => matchFilter(text, dataset, part.trim()));
         }
@@ -1129,9 +1131,24 @@
             return filter.split('&&').every(part => matchFilter(text, dataset, part.trim()));
         }
 
+        // NOT prefix: !keyword, !ip.src==X
+        if (filter.startsWith('!') && !filter.startsWith('!=')) {
+            const rest = filter.substring(1).trim();
+            if (!rest) return true;
+            return !matchFilter(text, dataset, rest);
+        }
+
+        // Structured NOT filters
+        if (filter.startsWith('ip.src!=')) return !text.includes(filter.substring(8));
+        if (filter.startsWith('ip.dst!=')) return !text.includes(filter.substring(8));
+        if (filter.startsWith('ip!=')) return !text.includes(filter.substring(4));
+        if (filter.startsWith('proto!=')) return !text.includes(filter.substring(7));
+        if (filter.startsWith('port!=')) return !text.includes(filter.substring(6));
+
         // Structured filters
         if (filter.startsWith('ip.src==')) return text.includes(filter.substring(8));
         if (filter.startsWith('ip.dst==')) return text.includes(filter.substring(8));
+        if (filter.startsWith('ip==')) return text.includes(filter.substring(4));
         if (filter.startsWith('proto==')) return text.includes(filter.substring(7));
         if (filter.startsWith('port==')) return text.includes(filter.substring(6));
 
@@ -1250,8 +1267,8 @@
 
     connection.on("VlanHopStateChanged", (status) => {
         vlanUpdateUI(status);
-        if (status.state === 'Active') {
-            vlanLog('State → Active, method: ' + (status.activeMethod || 'unknown'));
+        if (status.state === 'DtpSpoofing' || status.state === 'DoubleTagging') {
+            vlanLog('State → ' + status.state + ', method: ' + (status.activeMethod || 'unknown'));
         } else if (status.state === 'Idle' && vlanPollTimer) {
             clearInterval(vlanPollTimer);
             vlanPollTimer = null;
@@ -1346,7 +1363,7 @@
     function getProtoClass(p) {
         const proto = (p.appProtocol || p.protocol || '').toLowerCase();
         if (proto.includes('dns')) return 'proto-dns';
-        if (proto.includes('dhcp')) return 'proto-dns'; // DHCP cùng màu DNS (network services)
+        if (proto.includes('dhcp')) return 'proto-dns'; // DHCP shares the DNS color (network services)
         if (proto.includes('http') && !proto.includes('https')) return 'proto-http';
         if (proto.includes('https') || proto.includes('tls')) return 'proto-https';
         if (proto.includes('smb') || proto.includes('445')) return 'proto-smb';
@@ -1680,13 +1697,29 @@
         const container = document.getElementById('weakCards');
         container.style.display = '';
 
+        // Group duplicates: same name+category+src+dst+port increments the counter instead of creating a new card
+        const key = `${w.name}|${w.category}|${w.sourceIP}|${w.destIP}|${w.port}`;
+        const existing = container.querySelector(`[data-wkey="${CSS.escape(key)}"]`);
+        if (existing) {
+            const countEl = existing.querySelector('.wk-count');
+            const n = (parseInt(existing.dataset.wcount || '1', 10) + 1);
+            existing.dataset.wcount = String(n);
+            if (countEl) countEl.textContent = `×${n}`;
+            const metaEl = existing.querySelector('.wk-meta');
+            if (metaEl) metaEl.textContent = `${w.category} | ${w.sourceIP} → ${w.destIP} | Port ${w.port} | ${w.timestamp} (×${n})`;
+            container.insertBefore(existing, container.firstChild);
+            return;
+        }
+
         const card = document.createElement('div');
         card.className = 'weakness-card';
+        card.dataset.wkey = key;
+        card.dataset.wcount = '1';
         const sevClass = 'severity-' + w.severity.toLowerCase();
         card.innerHTML = `
             <div class="wk-header">
                 <strong>${escHtml(w.name)}</strong>
-                <span class="${sevClass}">${w.severity}</span>
+                <span><span class="wk-count" style="margin-right:6px;opacity:.75"></span><span class="${sevClass}">${w.severity}</span></span>
             </div>
             <div class="wk-meta">${escHtml(w.category)} | ${escHtml(w.sourceIP)} &rarr; ${escHtml(w.destIP)} | Port ${w.port} | ${escHtml(w.timestamp)}</div>
             <div class="wk-desc">${escHtml(w.description)}</div>
@@ -1880,6 +1913,7 @@
             protocols: document.getElementById('filterProtocol').value,
             ports: document.getElementById('filterPort').value,
             ipAddresses: document.getElementById('filterIP').value,
+            excludedIpAddresses: document.getElementById('filterExcludeIP').value,
             subnet: document.getElementById('filterSubnet').value,
             promiscuous: document.getElementById('filterPromisc').checked,
             maxPackets: 0
@@ -2110,7 +2144,7 @@
     // =============================================
     let arpStatusInterval = null;
 
-    // Pre-check: capture phai dang chay
+    // Pre-check: capture must be running
     function arpCheckCaptureState() {
         const stateEl = document.getElementById('statState');
         const isCapturing = stateEl && stateEl.textContent === 'Capturing';
@@ -2163,7 +2197,7 @@
 
     async function arpAutoDetect() {
         if (!arpCheckCaptureState()) {
-            document.getElementById('arpGwStatus').textContent = 'Start capture truoc khi dung ARP Spoofing';
+            document.getElementById('arpGwStatus').textContent = 'Start capture before using ARP Spoofing';
             document.getElementById('arpGwStatus').style.color = 'var(--red)';
             return;
         }
@@ -2181,7 +2215,7 @@
                     arpConfigure();
                 } else {
                     document.getElementById('arpGwStatus').innerHTML =
-                        `<span style="color:var(--yellow)">&#9888; Gateway ${escHtml(result.ip)} — MAC chua co trong ARP cache, ping gateway roi thu lai</span>`;
+                        `<span style="color:var(--yellow)">&#9888; Gateway ${escHtml(result.ip)} — MAC not in ARP cache yet, ping the gateway and try again</span>`;
                 }
             } else {
                 document.getElementById('arpGwStatus').innerHTML =
@@ -2199,7 +2233,7 @@
         const interval = parseInt(document.getElementById('arpInterval').value) || 2000;
         if (!ip || !mac) {
             document.getElementById('arpGwStatus').innerHTML =
-                '<span style="color:var(--red)">Gateway IP va MAC bat buoc</span>';
+                '<span style="color:var(--red)">Gateway IP and MAC are required</span>';
             return;
         }
         try {
@@ -2219,7 +2253,7 @@
 
     async function arpResolveMac() {
         const ip = document.getElementById('arpTargetIp').value.trim();
-        if (!ip) { alert('Nhap Target IP truoc'); return; }
+        if (!ip) { alert('Enter Target IP first'); return; }
         try {
             const result = await connection.invoke('ArpResolveMac', ip);
             if (result.success) {
@@ -2237,8 +2271,8 @@
     async function arpAddTarget() {
         const ip = document.getElementById('arpTargetIp').value.trim();
         let mac = document.getElementById('arpTargetMac').value.trim();
-        if (!ip) { alert('Target IP bat buoc'); return; }
-        // Auto-resolve MAC neu chua co
+        if (!ip) { alert('Target IP is required'); return; }
+        // Auto-resolve MAC if missing
         if (!mac) {
             try {
                 const resolve = await connection.invoke('ArpResolveMac', ip);
@@ -2246,7 +2280,7 @@
                     mac = resolve.mac;
                     document.getElementById('arpTargetMac').value = mac;
                 } else {
-                    alert('Khong the resolve MAC cho ' + ip + '. ' + resolve.error);
+                    alert('Cannot resolve MAC for ' + ip + '. ' + resolve.error);
                     return;
                 }
             } catch (e) {
@@ -2279,7 +2313,7 @@
 
     async function arpStart() {
         if (!arpCheckCaptureState()) {
-            alert('Phai start capture truoc khi ARP Spoofing');
+            alert('Start capture before ARP Spoofing');
             return;
         }
         try {
@@ -2321,7 +2355,7 @@
         try {
             const result = await connection.invoke('GetArpSpoofCandidates');
             if (!result.success || !result.hosts || result.hosts.length === 0) {
-                list.innerHTML = '<div style="color:var(--text-secondary)">Chua discover host nao. Start capture va doi traffic de phat hien host tren mang.</div>';
+                list.innerHTML = '<div style="color:var(--text-secondary)">No hosts discovered yet. Start capture and wait for traffic to discover hosts on the network.</div>';
                 return;
             }
             let html = '<table style="width:100%;font-size:11px"><thead><tr><th>IP</th><th>MAC</th><th>Vendor</th><th>Last</th><th></th></tr></thead><tbody>';
@@ -2412,7 +2446,7 @@
 
         if (stateEl) {
             stateEl.textContent = status.state || 'Idle';
-            const colors = { 'Idle': 'var(--text-secondary)', 'Probing': 'var(--yellow)', 'Active': 'var(--green)', 'Error': 'var(--red)' };
+            const colors = { 'Idle': 'var(--text-secondary)', 'ProbingDtp': 'var(--yellow)', 'DtpSpoofing': 'var(--green)', 'DoubleTagging': 'var(--yellow)', 'Error': 'var(--red)' };
             stateEl.style.color = colors[status.state] || 'var(--text-secondary)';
         }
         if (methodEl) {
@@ -2427,20 +2461,21 @@
         if (dtpSentEl) dtpSentEl.textContent = status.dtpFramesSent || 0;
         if (dblTagSentEl) dblTagSentEl.textContent = status.doubleTagFramesSent || 0;
 
-        const isActive = status.state === 'Probing' || status.state === 'Active';
+        // Backend states: Idle, ProbingDtp, DtpSpoofing, DoubleTagging
+        const isActive = !!status.state && status.state !== 'Idle';
         if (startBtn) startBtn.disabled = isActive;
         if (stopBtn) stopBtn.disabled = !isActive;
         if (indicator) {
             indicator.style.display = isActive ? 'inline-block' : 'none';
-            indicator.style.background = status.state === 'Active' ? 'rgba(68,255,68,0.15)' : 'rgba(255,187,51,0.15)';
-            indicator.style.color = status.state === 'Active' ? 'var(--green)' : 'var(--yellow)';
+            indicator.style.background = status.state === 'DtpSpoofing' ? 'rgba(68,255,68,0.15)' : 'rgba(255,187,51,0.15)';
+            indicator.style.color = status.state === 'DtpSpoofing' ? 'var(--green)' : 'var(--yellow)';
         }
 
         // Highlight workflow diagram steps
         const wfStep1 = document.getElementById('wfStep1');
         const wfStep2a = document.getElementById('wfStep2a');
         const wfStep2b = document.getElementById('wfStep2b');
-        if (wfStep1) wfStep1.style.borderLeftColor = status.state === 'Probing' ? 'var(--yellow)' : (isActive ? 'var(--green)' : 'var(--text-secondary)');
+        if (wfStep1) wfStep1.style.borderLeftColor = status.state === 'ProbingDtp' ? 'var(--yellow)' : (isActive ? 'var(--green)' : 'var(--text-secondary)');
         if (wfStep2a) wfStep2a.style.borderLeftColor = status.activeMethod === 'DtpSpoofing' ? 'var(--green)' : 'var(--text-secondary)';
         if (wfStep2b) wfStep2b.style.borderLeftColor = status.activeMethod === 'DoubleTagging' ? 'var(--yellow)' : 'var(--text-secondary)';
     }
@@ -2466,10 +2501,10 @@
                 vlanLog('Auto Detect: DTP detected, native VLAN = ' + (result.nativeVlan || 'unknown'));
             } else if (result.nativeVlan && result.nativeVlan > 0) {
                 document.getElementById('vlanNativeVlan').value = result.nativeVlan;
-                statusDiv.innerHTML = `<span style="color:var(--yellow)">DTP không phát hiện.</span> CDP Native VLAN: <strong style="color:var(--text-accent)">${result.nativeVlan}</strong>`;
+                statusDiv.innerHTML = `<span style="color:var(--yellow)">No DTP detected.</span> CDP Native VLAN: <strong style="color:var(--text-accent)">${result.nativeVlan}</strong>`;
                 vlanLog('Auto Detect: no DTP, CDP native VLAN = ' + result.nativeVlan);
             } else {
-                statusDiv.innerHTML = `<span style="color:var(--text-secondary)">Không phát hiện DTP hoặc CDP/LLDP. Cần capture thêm traffic hoặc config thủ công.</span>`;
+                statusDiv.innerHTML = `<span style="color:var(--text-secondary)">No DTP or CDP/LLDP detected. Capture more traffic or configure manually.</span>`;
                 vlanLog('Auto Detect: nothing found — capture more traffic or configure manually');
             }
         } catch (e) {
@@ -2484,7 +2519,7 @@
         const statusDiv = document.getElementById('vlanConfigStatus');
 
         if (!targetVlan || targetVlan < 1 || targetVlan > 4094) {
-            statusDiv.innerHTML = '<span style="color:var(--red)">Target VLAN phải từ 1-4094</span>';
+            statusDiv.innerHTML = '<span style="color:var(--red)">Target VLAN must be 1-4094</span>';
             return;
         }
         try {
@@ -2538,7 +2573,7 @@
     async function vlanArpRequest() {
         const ip = document.getElementById('vlanArpTargetIp').value.trim();
         const statusDiv = document.getElementById('vlanArpStatus');
-        if (!ip) { statusDiv.innerHTML = '<span style="color:var(--red)">Nhập IP target</span>'; return; }
+        if (!ip) { statusDiv.innerHTML = '<span style="color:var(--red)">Enter target IP</span>'; return; }
         try {
             const result = await connection.invoke('VlanHopArpRequest', ip);
             if (result.success) {

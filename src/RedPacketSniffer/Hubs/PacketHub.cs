@@ -88,7 +88,9 @@ public class PacketHub : Hub
                 if (!string.IsNullOrEmpty(filterDto.Ports))
                     filter.Ports = new HashSet<ushort>(filterDto.Ports.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(ushort.Parse));
                 if (!string.IsNullOrEmpty(filterDto.IpAddresses))
-                    filter.IpAddresses = new HashSet<string>(filterDto.IpAddresses.Split(',', StringSplitOptions.RemoveEmptyEntries));
+                    filter.IpAddresses = new HashSet<string>(filterDto.IpAddresses.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+                if (!string.IsNullOrEmpty(filterDto.ExcludedIpAddresses))
+                    filter.ExcludedIpAddresses = new HashSet<string>(filterDto.ExcludedIpAddresses.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
                 filter.Subnet = filterDto.Subnet;
                 filter.Promiscuous = filterDto.Promiscuous;
                 filter.MaxPackets = filterDto.MaxPackets;
@@ -385,7 +387,7 @@ public class PacketHub : Hub
             var spoofer = _captureService.GetOrCreateArpSpoofer();
             var result = spoofer.AutoDetectGateway();
             if (result == null)
-                return new { success = false, error = "Khong tim thay default gateway" };
+                return new { success = false, error = "Default gateway not found" };
             return new { success = true, ip = result.Value.ip, mac = result.Value.mac };
         }
         catch (Exception ex)
@@ -514,7 +516,7 @@ public class PacketHub : Hub
                 return new { success = true, mac = mac, source = "arp-cache" };
             }
 
-            return new { success = false, error = $"MAC cho {targetIp} khong tim thay. Ping target truoc roi thu lai." };
+            return new { success = false, error = $"MAC for {targetIp} not found. Ping the target first, then try again." };
         }
         catch (Exception ex)
         {
@@ -671,8 +673,8 @@ public class PacketHub : Hub
                 dtpDetected = dtpSeen,
                 cdpDeviceCount = cdpDevices.Count,
                 hint = dtpSeen
-                    ? "DTP detected — DTP Spoofing co the thuc hien"
-                    : "Khong thay DTP — se fallback sang Double Tagging"
+                    ? "DTP detected — DTP Spoofing is possible"
+                    : "No DTP seen — will fall back to Double Tagging"
             };
         }
         catch (Exception ex)
@@ -721,6 +723,7 @@ public class CaptureFilterDto
     public string? Protocols { get; set; }    // "TCP,UDP"
     public string? Ports { get; set; }        // "80,443,8080"
     public string? IpAddresses { get; set; }  // "192.168.1.1,10.0.0.1"
+    public string? ExcludedIpAddresses { get; set; }  // "192.168.0.104" — IP máy mình cần ẩn
     public string? Subnet { get; set; }       // "192.168.1.0/24"
     public bool Promiscuous { get; set; }
     public long MaxPackets { get; set; }

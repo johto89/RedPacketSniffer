@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.NetworkInformation;
 using RedPacketSniffer.Core.Capture;
 
 namespace RedPacketSniffer.Core.Analysis;
@@ -93,9 +94,9 @@ public sealed class VlanHopper : IDisposable
     public void Configure(int targetVlan, int nativeVlan = 1, int dtpProbeTimeoutSec = 30)
     {
         if (targetVlan < 1 || targetVlan > 4094)
-            throw new ArgumentException("VLAN ID phải từ 1 đến 4094.");
+            throw new ArgumentException("Target VLAN ID must be 1-4094.");
         if (nativeVlan < 1 || nativeVlan > 4094)
-            throw new ArgumentException("Native VLAN ID phải từ 1 đến 4094.");
+            throw new ArgumentException("Native VLAN ID must be 1-4094.");
 
         _targetVlan = targetVlan;
         _nativeVlan = nativeVlan;
@@ -189,15 +190,21 @@ public sealed class VlanHopper : IDisposable
     public void Start()
     {
         if (State != VlanHopState.Idle)
-            throw new InvalidOperationException($"Đang ở state {State}, không thể start.");
+            throw new InvalidOperationException($"Already in state {State}, cannot start.");
         if (_targetVlan == 0)
-            throw new InvalidOperationException("Chưa configure. Gọi Configure() trước.");
+            throw new InvalidOperationException("Not configured. Call Configure() first.");
 
         _attackerMac = _engine.GetSelectedAdapterMac();
         DtpFramesSent = 0;
         DoubleTagFramesSent = 0;
         TrunkEstablished = false;
         _dtpDetected = false;
+
+        // Cảnh báo Wi-Fi: AP ở client mode strip 802.1Q tag và không forward
+        // DTP multicast — DTP spoofing + double tagging praktisch chỉ chạy trên Ethernet có dây.
+        if (IsSniffingOnWifi())
+            Log("WARNING: the sniffing NIC is Wi-Fi — DTP/double tagging almost NEVER works " +
+                "over Wi-Fi client mode (the AP strips VLAN tags). Use wired Ethernet plugged directly into the switch.");
 
         _cts = new CancellationTokenSource();
         _runTask = Task.Run(() => RunWorkflow(_cts.Token));
@@ -338,7 +345,7 @@ public sealed class VlanHopper : IDisposable
         Log("Trunk negotiation in progress...");
         Log("Sending DTP Desirable frames continuously to maintain trunk...");
         Log($"Attacker should now receive traffic for ALL VLANs on this trunk.");
-        Log("Tip: Kết hợp với ARP Spoofing trong target VLAN để MITM.");
+        Log("Tip: Combine with ARP Spoofing inside the target VLAN for MITM.");
 
         while (!ct.IsCancellationRequested)
         {
@@ -414,7 +421,7 @@ public sealed class VlanHopper : IDisposable
     public bool SendDoubleTaggedFrame(byte[] innerPayload)
     {
         if (ActiveMethod != VlanHopMethod.DoubleTagging && ActiveMethod != VlanHopMethod.DtpSpoofing)
-            throw new InvalidOperationException("Không ở mode double tagging.");
+            throw new InvalidOperationException("Not in double tagging mode.");
 
         byte[] frame = BuildDoubleTaggedFrame(innerPayload);
         bool sent = _engine.SendRawPacket(frame);
@@ -746,6 +753,32 @@ public sealed class VlanHopper : IDisposable
     }
 
     private void Log(string message) => OnLog?.Invoke(message);
+
+    /// <summary>
+    /// Kiểm tra card đang sniff có phải Wi-Fi không (khớp MAC với adapter đã chọn).
+    /// </summary>
+    private bool IsSniffingOnWifi()
+    {
+        try
+        {
+            byte[] selMac = _engine.GetSelectedAdapterMac();
+            if (selMac.Length != 6) return false;
+            foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (nic.OperationalStatus != OperationalStatus.Up) continue;
+                if (nic.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
+                try
+                {
+                    byte[] mac = nic.GetPhysicalAddress().GetAddressBytes();
+                    if (mac.Length == 6 && mac.SequenceEqual(selMac))
+                        return nic.NetworkInterfaceType == NetworkInterfaceType.Wireless80211;
+                }
+                catch { /* bỏ qua NIC lỗi đọc MAC */ }
+            }
+        }
+        catch { /* chưa chọn adapter */ }
+        return false;
+    }
 
     private void NotifyStatus() => OnStatusChanged?.Invoke(GetStatus());
 

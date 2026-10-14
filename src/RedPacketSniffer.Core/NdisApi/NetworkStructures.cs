@@ -200,6 +200,7 @@ public struct SnapHeader
 
     public readonly ushort ProtocolType => NetUtils.Ntohs(ProtocolTypeBE);
     public const ushort SNAP_CDP = 0x2000;
+    public const ushort SNAP_DTP = 0x2004;
     public const int SIZE = 5;
 }
 

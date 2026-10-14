@@ -312,6 +312,9 @@ public static class CliMode
                                 case "ip":
                                     filter.IpAddresses = new HashSet<string>(kv[1].Split(','));
                                     break;
+                                case "exclude" or "notip" or "hideip":
+                                    filter.ExcludedIpAddresses = new HashSet<string>(kv[1].Split(','));
+                                    break;
                                 case "subnet":
                                     filter.Subnet = kv[1];
                                     break;

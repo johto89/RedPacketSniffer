@@ -163,6 +163,13 @@ public static class PacketParser
                         packet.ApplicationProtocol = "HSRP";
                         ParseHsrp(pBuf, transportOffset + UdpHeader.SIZE, length, ref packet);
                     }
+
+                    // Parse IKE (UDP 500 / NAT-T 4500) — passive only, no probing
+                    if (udp->DestPort == 500 || udp->DestPort == 4500 ||
+                        udp->SourcePort == 500 || udp->SourcePort == 4500)
+                    {
+                        ParseIke(pBuf, transportOffset + UdpHeader.SIZE, length, ref packet);
+                    }
                 }
                 // Deep-parse ICMP
                 else if (ip->Protocol == IPv4Header.PROTO_ICMP && length >= transportOffset + IcmpHeader.SIZE)
@@ -333,6 +340,13 @@ public static class PacketParser
                     {
                         packet.ApplicationProtocol = "DHCPv6";
                     }
+
+                    // Parse IKE (UDP 500 / NAT-T 4500) — passive only, no probing
+                    if (udp->DestPort == 500 || udp->DestPort == 4500 ||
+                        udp->SourcePort == 500 || udp->SourcePort == 4500)
+                    {
+                        ParseIke(pBuf, transportOffset + UdpHeader.SIZE, length, ref packet);
+                    }
                 }
                 else if (nextHeader == IPv6Header.PROTO_ICMPV6 && length >= transportOffset + ICMPv6Header.SIZE)
                 {
@@ -475,8 +489,65 @@ public static class PacketParser
                     packet.ApplicationProtocol = "CDP";
                     ParseCdp(pBuf, snapOffset + SnapHeader.SIZE, length, ref packet);
                 }
+                // DTP: OUI 00:00:0C, Type 0x2004 — VlanHopper.AnalyzePacket dựa vào
+                // ApplicationProtocol này để detect switch có bật DTP hay không.
+                // (Trước đây thiếu branch này nên DTP không bao giờ được detect,
+                // workflow luôn chờ hết 30s probe rồi fallback double tagging.)
+                else if (snap->OUI0 == 0x00 && snap->OUI1 == 0x00 && snap->OUI2 == 0x0C &&
+                    snap->ProtocolType == SnapHeader.SNAP_DTP)
+                {
+                    packet.ApplicationProtocol = "DTP";
+                    ParseDtp(pBuf, snapOffset + SnapHeader.SIZE, length, ref packet);
+                }
             }
         }
+    }
+
+    /// <summary>
+    /// Parse DTP (Dynamic Trunking Protocol) — TLV format.
+    /// Dst MAC: 01:00:0C:CC:CC:CC, SNAP OUI 00:00:0C type 0x2004.
+    /// Payload: version(1) + TLVs. Status TLV (0x0002) giá trị 4 bytes,
+    /// byte cuối là trunk status (0x03=Off, 0x04=Auto, 0x81=On, 0xA5=Desirable).
+    /// </summary>
+    private static unsafe void ParseDtp(byte* pBuf, int offset, int length, ref CapturedPacket packet)
+    {
+        packet.Info = "DTP frame";
+        if (length < offset + 1) return;
+
+        int pos = offset + 1; // skip version
+        string statusStr = "";
+        string domainStr = "";
+
+        while (pos + 4 <= length)
+        {
+            ushort type = NetUtils.Ntohs(*(ushort*)(pBuf + pos));
+            ushort len = NetUtils.Ntohs(*(ushort*)(pBuf + pos + 2));
+            if (len < 4 || pos + len > length) break;
+
+            if (type == 0x0002 && len >= 8) // Status TLV
+            {
+                byte status = pBuf[pos + len - 1];
+                statusStr = status switch
+                {
+                    0x03 => "Off",
+                    0x04 => "Auto",
+                    0x81 => "On",
+                    0x82 => "On-NoNegotiate",
+                    0xA5 => "Desirable",
+                    _ => $"0x{status:X2}"
+                };
+            }
+            else if (type == 0x0001 && len > 4) // Domain TLV
+            {
+                domainStr = ExtractAscii(pBuf, pos + 4, Math.Min(len - 4, 32));
+            }
+
+            pos += len;
+        }
+
+        packet.Info = "DTP" +
+                      (statusStr != "" ? $" Status={statusStr}" : "") +
+                      (domainStr != "" ? $" Domain={domainStr}" : "");
     }
 
     /// <summary>
@@ -1050,6 +1121,159 @@ public static class PacketParser
         parts.Add($"Client={clientMac}");
 
         packet.Info = string.Join(" ", parts);
+    }
+
+    // ============================================================
+    // IKE Passive Parser — ISAKMP header + payload chain, no probing
+    // RFC 2408/2409 (IKEv1) + RFC 7296 (IKEv2). Only reads bytes.
+    // Collects: version, exchange/mode, flags, payload list,
+    // Vendor-ID guess. No PSK/hash extraction, no crack.
+    // ============================================================
+
+    private static unsafe void ParseIke(byte* pBuf, int offset, int length, ref CapturedPacket packet)
+    {
+        int ikeOffset = offset;
+
+        // NAT-T (UDP 4500): strip 4-byte Non-ESP marker (all zero) -> IKE follows.
+        bool isNatT = packet.SourcePort == 4500 || packet.DestPort == 4500;
+        if (isNatT && length >= ikeOffset + 4 &&
+            pBuf[ikeOffset] == 0 && pBuf[ikeOffset + 1] == 0 &&
+            pBuf[ikeOffset + 2] == 0 && pBuf[ikeOffset + 3] == 0)
+        {
+            ikeOffset += 4;
+        }
+
+        if (length < ikeOffset + 28)
+        {
+            packet.Info = isNatT
+                ? "NAT-T ESP data (no ISAKMP header)"
+                : "IKE fragment (payload < 28B ISAKMP header)";
+            return;
+        }
+
+        byte nextPayload = pBuf[ikeOffset + 16];
+        byte verByte = pBuf[ikeOffset + 17];
+        int major = (verByte >> 4) & 0x0F;
+        int minor = verByte & 0x0F;
+        byte exchange = pBuf[ikeOffset + 18];
+        byte flags = pBuf[ikeOffset + 19];
+
+        bool rCookieZero = true;
+        for (int i = 0; i < 8; i++)
+        {
+            if (pBuf[ikeOffset + 8 + i] != 0) { rCookieZero = false; break; }
+        }
+
+        string versionStr = major == 2 ? "IKEv2" : major == 1 ? "IKEv1" : $"IKE ver{major}.{minor}";
+        string exchStr = major == 2 ? IkeV2ExchangeName(exchange) : IkeV1ExchangeName(exchange);
+        string role = rCookieZero ? "Initiator (1st msg)" : "Responder/ongoing";
+
+        var payloadNames = new List<string>();
+        var vidGuesses = new List<string>();
+        int pos = ikeOffset + 28;
+        byte cur = nextPayload;
+        for (int depth = 0; depth < 16 && cur != 0 && pos + 4 <= length; depth++)
+        {
+            byte next = pBuf[pos];
+            int payLen = (pBuf[pos + 2] << 8) | pBuf[pos + 3];
+            if (payLen < 4 || pos + payLen > length) break;
+
+            payloadNames.Add(major == 2 ? IkeV2PayloadName(cur) : IkeV1PayloadName(cur));
+
+            if (cur == 13 || cur == 43)
+            {
+                string hex = IkeBytesToHex(pBuf, pos + 4, Math.Min(payLen - 4, 24));
+                string? guess = GuessVendorId(hex);
+                if (guess != null) vidGuesses.Add(guess);
+            }
+
+            cur = next;
+            pos += payLen;
+        }
+
+        var parts = new List<string> { $"{versionStr} {exchStr} Flags=0x{flags:X2} {role}" };
+        if (payloadNames.Count > 0) parts.Add($"Payloads=[{string.Join(",", payloadNames)}]");
+        if (vidGuesses.Count > 0) parts.Add($"VID={string.Join("|", vidGuesses)}");
+        packet.Info = string.Join(" ", parts);
+    }
+
+    private static string IkeV1ExchangeName(byte ex) => ex switch
+    {
+        1 => "Base",
+        2 => "Main Mode (ID Protection)",
+        3 => "Auth Only",
+        4 => "Aggressive Mode",
+        5 => "Informational",
+        6 => "Transaction (Mode Config)",
+        _ => $"Exchange({ex})"
+    };
+
+    private static string IkeV2ExchangeName(byte ex) => ex switch
+    {
+        34 => "IKE_SA_INIT",
+        35 => "IKE_AUTH",
+        36 => "CREATE_CHILD_SA",
+        37 => "INFORMATIONAL",
+        _ => $"Exchange({ex})"
+    };
+
+    private static string IkeV1PayloadName(byte t) => t switch
+    {
+        1 => "SA",
+        2 => "Proposal",
+        3 => "Transform",
+        4 => "KE",
+        5 => "ID",
+        6 => "CERT",
+        7 => "CERTREQ",
+        8 => "Hash",
+        9 => "SIG",
+        10 => "Nonce",
+        11 => "Notify",
+        12 => "Delete",
+        13 => "VendorID",
+        _ => $"P({t})"
+    };
+
+    private static string IkeV2PayloadName(byte t) => t switch
+    {
+        33 => "SA",
+        34 => "KE",
+        35 => "IDi",
+        36 => "IDr",
+        37 => "CERT",
+        38 => "CERTREQ",
+        39 => "AUTH",
+        40 => "Nonce",
+        41 => "Notify",
+        42 => "Delete",
+        43 => "VendorID",
+        44 => "TSi",
+        45 => "TSr",
+        46 => "SK",
+        47 => "CP",
+        _ => $"P({t})"
+    };
+
+    private static unsafe string IkeBytesToHex(byte* pBuf, int offset, int count)
+    {
+        var sb = new System.Text.StringBuilder(count * 2);
+        for (int i = 0; i < count; i++)
+            sb.Append(pBuf[offset + i].ToString("x2"));
+        return sb.ToString();
+    }
+
+    private static string? GuessVendorId(string hexLower)
+    {
+        string h = hexLower.ToLowerInvariant();
+        if (h.StartsWith("12f5f28c457168a9702d9fe274cc01")) return "Cisco Unity";
+        if (h.StartsWith("09002689dfd6b712")) return "XAUTH";
+        if (h.StartsWith("4048b7d56ebce88525e7de7f00d6c2d3")) return "IKE Fragmentation";
+        if (h.StartsWith("1f07f70eaa6514d3b0fa96542a5001")) return "Cisco VPN Concentrator";
+        if (h.StartsWith("4a131c8343b5878225ad5a55a494a5")) return "NAT-T RFC3947";
+        if (h.StartsWith("afcad71368a1f1c96b8696ff01c6d4a")) return "DPD";
+        if (h.StartsWith("90cb80913ebb696e086381b5ec427b")) return "Fragmentation (RFC 7383)";
+        return null;
     }
 
     // ============================================================

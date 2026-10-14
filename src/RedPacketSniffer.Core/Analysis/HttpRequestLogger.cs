@@ -25,7 +25,6 @@ public sealed class HttpRequestLogger
     private readonly object _lock = new();
     private readonly Dictionary<string, int> _hostCount = new(); // host -> request count
     private readonly Dictionary<string, HashSet<string>> _hostEndpoints = new(); // host -> unique URLs
-    private long _analyzeCount;
 
     /// <summary>Maximum bytes of HTTP payload to convert to string. Headers + partial body.</summary>
     private const int MaxHttpPayloadBytes = 8192;

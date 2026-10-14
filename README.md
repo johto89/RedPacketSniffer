@@ -85,30 +85,73 @@ RedPacketSniffer.exe --web
 
 > See [tutorial.md](tutorial.md) for comprehensive usage guide.
 
-## Project Structure
+## Publish (run on machines without .NET)
 
+Self-contained publish bundles the .NET 8 runtime — the target machine needs
+no .NET installed (WinpkFilter driver + Administrator rights are still required).
+
+```powershell
+dotnet publish src/RedPacketSniffer/RedPacketSniffer.csproj -c Release -r win-x64 --self-contained true -o .\publish\win-x64
 ```
-RedPacketSniffer.sln
-├── src/
-│   ├── RedPacketSniffer/                  # Unified executable (CLI + Web)
-│   │   ├── Program.cs                     # Entry point & argument parser
-│   │   ├── Modes/
-│   │   │   ├── CliMode.cs                 # Console interactive mode
-│   │   │   └── WebMode.cs                 # ASP.NET Core + SignalR mode
-│   │   ├── Hubs/
-│   │   │   └── PacketHub.cs               # SignalR hub for real-time streaming
-│   │   ├── Services/
-│   │   │   ├── CaptureService.cs          # Singleton capture bridge
-│   │   │   └── PacketBroadcastService.cs  # Background event batching (100ms)
-│   │   └── wwwroot/
-│   │       └── index.html                 # Web dashboard SPA
-│   │
-│   └── RedPacketSniffer.Core/             # Core library (zero web dependencies)
-│       ├── NdisApi/                        # WinpkFilter P/Invoke wrapper
-│       ├── Capture/                        # Engine, parser, filter, packet model
-│       ├── Analysis/                       # All 11 analysis modules
-│       └── Export/                         # PCAP, HTML, JSON export
+
+Copy the whole `publish\win-x64` folder to the target machine and run
+`RedPacketSniffer.exe --web` as Administrator. (~150MB — mostly the .NET runtime.)
+
+Single-file alternative (~70MB, slower first start — verify the dashboard loads fully):
+```powershell
+dotnet publish src/RedPacketSniffer/RedPacketSniffer.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o .\publish\single
 ```
+
+Do not enable trimming (`PublishTrimmed`) — it breaks SignalR/reflection.
+
+## ⚠ IP Forwarding (required for ARP Spoofing)
+
+During ARP spoofing the victim's traffic flows through your machine. Windows drops packets
+not addressed to itself by default, so the victim **loses connectivity** unless forwarding is on.
+The tool enables it automatically on `ArpSpoofStart` and restores the previous state on
+`ArpSpoofStop` (per-interface + `IPEnableRouter` registry, verified against the sniffing NIC —
+see the `Sniffing interface: ...` log line).
+
+If the tool reports it cannot enable forwarding (missing privileges, GPO restriction),
+check and enable it manually **as Administrator** on the interface you want to sniff
+(e.g. `"Wi-Fi"` or `"Ethernet"` — list them with `netsh interface show interface`).
+
+**1. Check Forwarding**
+
+The `Forwarding` line must read `enabled` on the interface you want to sniff.
+```cmd
+CMD:
+netsh interface ipv4 show interface "Wi-Fi"
+netsh interface ipv4 show interface "Ethernet"
+```
+
+and
+```powershell
+PowerShell:
+Get-NetIPInterface -InterfaceAlias "Wi-Fi" -AddressFamily IPv4 | Select-Object InterfaceAlias, Forwarding
+Get-NetIPInterface -InterfaceAlias "Ethernet" -AddressFamily IPv4 | Select-Object InterfaceAlias, Forwarding
+```
+
+**2. Enable Forwarding if disabled**
+```cmd
+CMD:
+netsh interface ipv4 set interface "Wi-Fi" forwarding=enabled
+netsh interface ipv4 set interface "Ethernet" forwarding=enabled
+```
+and
+```powershell
+PowerShell:
+Set-NetIPInterface -InterfaceAlias "Wi-Fi" -AddressFamily IPv4 -Forwarding Enabled
+Set-NetIPInterface -InterfaceAlias "Ethernet" -AddressFamily IPv4 -Forwarding Enabled
+```
+
+Disable it when finished (`... forwarding=disabled` / `-Forwarding Disabled`).
+
+> Notes:
+> - `netsh interface ipv4 show global` does **not** display the forwarding state — always check per-interface as above.
+> - Spoofed MAC + Windows forwarding guarantees an outage (the NIC drops frames sent to an unknown MAC), so the tool refuses to `Start()` while a spoofed MAC is set.
+> - VLAN hopping (DTP/double tagging) practically only works over **wired Ethernet** — Wi-Fi client mode has VLAN tags stripped by the AP.
+
 
 ## Security Notice
 
@@ -118,6 +161,10 @@ This tool is built for **authorized security testing only**.
 - Always obtain proper approval before capturing traffic on any network
 - Comply with local laws and your organization's security policies
 - Never use on production networks without stakeholder consent
+
+## License
+
+[MIT License](LICENSE) — free to use, modify, and distribute.
 
 ## Author
 
